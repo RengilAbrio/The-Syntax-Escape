@@ -2,7 +2,7 @@ import pygame
 import sys
 
 pygame.init()
-screen = pygame.display.set_mode((800, 600))
+screen = pygame.display.set_mode((800, 600))  # GAME WINDOW/SCREEN (WIDTH,HEIGHT)
 pygame.display.set_caption("SYSTEM.REBOOT")
 clock = pygame.time.Clock()
 font = pygame.font.SysFont("Courier", 24, bold=True)
@@ -14,17 +14,21 @@ GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 GRAY = (50, 50, 50)
 
+# --- PLAYER/CHARACTER ---
 player = pygame.Rect(50, 460, 40, 40)
+# --- PLATFORM ---
 floor = pygame.Rect(0, 500, 300, 100)
 bridge = pygame.Rect(300, 500, 200, 20)
 goal = pygame.Rect(500, 500, 300, 100)
 
+# --- GAME PHYSICS ---
 vel_y = 0
 is_jump = False
 bridge_active = False
 show_terminal = False
 game_state = "RUNNING"
 
+# --- MAIN GAME LOOP ---
 while True:
     screen.fill(BLACK)
 
@@ -81,12 +85,14 @@ while True:
         if player.x > 700:
             game_state = "WON"
 
+    # DRAW PLATFORM
     pygame.draw.rect(screen, GREEN, floor)
     pygame.draw.rect(screen, GREEN, goal)
     if bridge_active:
         pygame.draw.rect(screen, CYAN, bridge)
     else:
         pygame.draw.rect(screen, GRAY, bridge, 2)
+    # DRAW PLAYER
     pygame.draw.rect(screen, CYAN, player)
 
     if show_terminal:
@@ -101,4 +107,5 @@ while True:
         screen.blit(font.render("SYSTEM REBOOTED! [R]", True, GREEN), (250, 300))
 
     pygame.display.flip()
+    # GAME TIME
     clock.tick(60)
