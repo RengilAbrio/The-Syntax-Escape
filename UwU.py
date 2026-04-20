@@ -2,6 +2,15 @@ import pygame
 from pygame.locals import *
 import os
 
+# Game States
+MENU = 0
+PLAYING = 1
+QUIZ = 2
+
+game_state = MENU
+selected_language = None
+selected_level = 1
+
 pygame.init()
 
 clock = pygame.time.Clock()
@@ -12,6 +21,7 @@ screen_height = 1000
 
 screen = pygame.display.set_mode((screen_width, screen_height))
 pygame.display.set_caption('THE-SYNTAX-ESCAPE')
+
 
 # --- DEFINE GAME VARIABLES ---
 tile_size = 40
@@ -60,21 +70,22 @@ class BackgroundManager:
             screen.blit(bg, (-x_offset, 0))
             screen.blit(bg, (screen_width - x_offset, 0))
 
-class Player():
+class Player(pygame.sprite.Sprite):  # ← ADD THIS
     def __init__(self, x, y):
+        super().__init__()  # ← ADD THIS
         self.animations = {'IDLE': [], 'RUN': [], 'JUMP': []}
         self.status = 'STAND'
         self.frame_index = 0
         self.animation_speed = 0.10
         self.index = 0
         self.counter = 0
-        
         self.facing_right = True
+        
         
         self.last_action_time = pygame.time.get_ticks()
         self.is_playing_idle = False
         
-        self.import_assets()
+        self.import_assets()  # This method MUST exist
         
         # Set initial image
         if len(self.animations['IDLE']) > 0:
@@ -84,12 +95,19 @@ class Player():
             
         self.rect = self.image.get_rect(topleft=(x, y))
         
-        # Movement variables
+        self.hitbox = self.rect.inflate(-20, -10)
+        
+        # FIXED PHYSICS
         self.vel_y = 0
         self.jumped = False
+        self.on_ground = False
         self.direction = 0
         
-    def import_assets(self):
+        self.is_dying = False
+        self.death_time = 0
+        self.respawn_time = 0 # Track when we reset
+        
+    def import_assets(self):  # ← THIS WAS MISSING!
         path = 'GRAPHICS/PLAYER/'
         
         for animation in self.animations.keys():
@@ -146,8 +164,8 @@ class Player():
 
         key = pygame.key.get_pressed()
         
-        # Jumping
-        if key[pygame.K_SPACE] and not self.jumped:
+        # FIXED JUMPING - Only jump if on ground
+        if key[pygame.K_SPACE] and self.on_ground and not self.jumped:
             self.vel_y = -15
             self.jumped = True
             self.status = 'JUMP'
@@ -180,74 +198,80 @@ class Player():
         return dx, dy, action_taken
 
     def update(self, world, game_over):
-        
         if game_over == 0:
-            # Get input
-            dx, dy, action_taken = self.get_input()
-            
-            
-            # Idle animation logic
-            current_time = pygame.time.get_ticks()
-            if not action_taken and not self.jumped:
-                if self.is_playing_idle:
-                    self.status = 'IDLE'
-                else:
-                    self.status = 'STAND'
-                    if current_time - self.last_action_time > 5000:  # 5 seconds
-                        self.is_playing_idle = True
-                        self.frame_index = 0
-                        self.status = 'IDLE'
+            # If we are in the middle of dying, don't take input
+            if self.is_dying:
+                # Check if 1000ms (1 second) has passed
+                if pygame.time.get_ticks() - self.death_time > 1000:
+                    return -1 # Finally trigger game over
+                return 0 # Still in delay, stay alive for a moment longer
             else:
-                # Reset idle timer on any action
-                self.last_action_time = current_time
-                self.is_playing_idle = False
+            # Get input (only if NOT dying)
+                dx, dy, action_taken = self.get_input()
+                
+                # Idle animation logic
+                current_time = pygame.time.get_ticks()
+                is_grace_period = (current_time - self.respawn_time) < 1000
+                if not action_taken and self.on_ground:
+                    if self.is_playing_idle:
+                        self.status = 'IDLE'
+                    else:
+                        self.status = 'STAND'
+                        if current_time - self.last_action_time > 5000:
+                            self.is_playing_idle = True
+                            self.frame_index = 0
+                            self.status = 'IDLE'
+                else:
+                    self.last_action_time = current_time
+                    self.is_playing_idle = False
 
-            # Apply gravity
-            self.vel_y += 1
-            if self.vel_y > 10:
-                self.vel_y = 10
-            dy += self.vel_y
-            
-            # Collision detection
-            for tile in world.tile_list:
-                # Horizontal collision
-                if tile[1].colliderect(self.rect.x + dx, self.rect.y, 63, 63):
-                    dx = 0
+                # Apply gravity
+                self.vel_y += 1
+                if self.vel_y > 10:
+                    self.vel_y = 10
+                dy += self.vel_y
+                
+                # Collision detection with world tiles
+                self.on_ground = False
+                
+                for tile in world.tile_list:
+                    # Horizontal collision
+                    if tile[1].colliderect(self.rect.x + dx, self.rect.y, 63, 63):
+                        dx = 0
 
-                # Vertical collision
-                if tile[1].colliderect(self.rect.x, self.rect.y + dy, 63, 63):
-                    # Hit ceiling
-                    if self.vel_y < 0:
-                        self.rect.top = tile[1].bottom
-                        self.vel_y = 0
-                    # Landed on ground
-                    elif self.vel_y >= 0:
-                        self.rect.bottom = tile[1].top
-                        self.vel_y = 0
-                        # Reset jump when landing
-                        if self.status == 'JUMP':
+                    # Vertical collision
+                    if tile[1].colliderect(self.rect.x, self.rect.y + dy, 63, 63):
+                        if self.vel_y < 0:  # Ceiling
+                            self.rect.top = tile[1].bottom
+                            self.vel_y = 0
+                        elif self.vel_y >= 0:  # Ground
+                            self.rect.bottom = tile[1].top
+                            self.vel_y = 0
+                            self.on_ground = True
+                            self.jumped = False
                             if abs(dx) > 0:
                                 self.status = 'RUN'
                             else:
                                 self.status = 'STAND'
-                                
-            # --- CHECK FOR COLLISION (ENEMIES) ---
-            if pygame.sprite.spritecollide(self, slime_group, False):
-                return -1
-
-
+                                    
+            if not self.is_dying and not is_grace_period:
+                for slime in slime_group:
+                    if self.hitbox.colliderect(slime.hitbox):
+                        self.is_dying = True
+                        self.death_time = pygame.time.get_ticks()
+                        
             # Update position
             self.rect.x += dx
             self.rect.y += dy
+            self.hitbox.center = self.rect.center
+            
 
-        # Animate (MUST be called before drawing)
         self.animate()
-        
-        # Update width/height for collision
         self.width = self.image.get_width()
         self.height = self.image.get_height()
         
         return game_over
+            
 
     def draw(self, screen):
         draw_pos = (self.rect.x, self.rect.y + 10) 
@@ -256,9 +280,9 @@ class Player():
 
 
 class World():
-    def __init__(self, data):
+    def __init__(self, data, difficulty_level):
         self.tile_list = []
-
+        self.difficulty = difficulty_level
         #load images
         grass_img = pygame.image.load('GRAPHICS/TILES/Tile_01.png').convert_alpha()
         tile_img = pygame.image.load('GRAPHICS/TILES/Tile_02.png').convert_alpha()
@@ -290,8 +314,10 @@ class World():
                     tile = (img, img_rect)
                     self.tile_list.append(tile)
                 if tile == 4:
-                    slime = Enemy(col_count * tile_size, row_count * tile_size )
-                    slime_group.add(slime)
+        # Spawn more enemies based on difficulty
+                    for _ in range(self.difficulty): 
+                        slime = Enemy(col_count * tile_size, row_count * tile_size)
+                        slime_group.add(slime)
                 col_count += 1
             row_count +=1
 
@@ -379,6 +405,8 @@ class Enemy(pygame.sprite.Sprite):
         # --- NEW: Resize the rect to match the new image size ---
         self.rect = self.image.get_rect()
         self.rect.topleft = (x, y)
+        self.hitbox = self.rect.inflate(-20, -20)
+        self.collision_rect = self.rect.copy()  
 
     def load_frames(self, filename, cols, row):
         sheet = pygame.image.load(filename).convert_alpha()
@@ -399,6 +427,7 @@ class Enemy(pygame.sprite.Sprite):
         return frames
 
     def update(self, world):
+        self.hitbox.center = self.rect.center
         # --- GRAVITY ---
         self.vel_y += 1
         if self.vel_y > 10:
@@ -454,52 +483,104 @@ class Enemy(pygame.sprite.Sprite):
         raw_image = animation_frames[int(self.current_frame)]
         self.image = pygame.transform.flip(raw_image, True, False) if self.direction == 1 else raw_image
             
-            
+class Menu:
+    
+    def __init__(self):
+        self.languages = ["Python", "Java", "JavaScript", "HTML", "CSS"]
+        self.levels = list(range(1, 11))
+        self.font = pygame.font.SysFont('Arial', 30)
+
+    def draw(self, screen):
+        screen.fill((20, 20, 20)) # Background
+        title = self.font.render("SELECT LANGUAGE & LEVEL", True, (255, 255, 255))
+        screen.blit(title, (300, 50))
+
+        # Draw Language Buttons
+        for i, lang in enumerate(self.languages):
+            rect = pygame.Rect(100, 150 + i*60, 200, 50)
+            pygame.draw.rect(screen, (0, 255, 0), rect, 2)
+            text = self.font.render(lang, True, (255, 255, 255))
+            screen.blit(text, (110, 160 + i*60))
+
+    def handle_click(self, pos):
+        global game_state, selected_language
+        # Simple collision check for buttons
+        for i, lang in enumerate(self.languages):
+            rect = pygame.Rect(100, 150 + i*60, 200, 50)
+            if rect.collidepoint(pos):
+                selected_language = lang
+                game_state = PLAYING
+                print(f"Started {selected_language} Level {selected_level}")
+
+
 bg_manager = BackgroundManager()
 player = Player(-5, screen_height - 350)
 
 slime_group = pygame.sprite.Group()
 
+menu = Menu()
 
-world = World (world_data)
 
 run = True
 while run:
-
     clock.tick(fps)
-    if game_over == 0: 
-        bg_manager.draw_bg(screen)
-
-        world.draw()
-
-        slime_group.update(world)
-        for enemy in slime_group:
-            visual_offset_y = -35
-            screen.blit(enemy.image, (enemy.rect.x, enemy.rect.y - visual_offset_y))
-            
-        game_over = player.update(world, game_over)
-        player.draw(screen)
-    else:
-        bg_manager.draw_bg(screen)
-        
+    
+  # 1. EVENT HANDLING
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             run = False
+            
+        # Handle Menu clicks only when in Menu
+        if game_state == MENU:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                menu.handle_click(pygame.mouse.get_pos())
+                # Re-initialize world based on selection
+                world = World(world_data, selected_level)
 
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_r and game_over != 0:
-                game_over = 0
-                player.rect.x = -5
-                player.rect.y = screen_height - 350
+        # Handle Reset only when in PLAYING
+        elif game_state == PLAYING:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_r and game_over != 0:
+                    game_over = 0
+                    player.rect.x = -5
+                    player.rect.y = screen_height - 350
+                    player.respawn_time = pygame.time.get_ticks()
+                    slime_group.empty()
+                    for x, y in slime_positions:
+                        slime = Enemy(x, y)
+                        slime_group.add(slime)
+                    player.is_dying = False
+
+    # Debugging: Uncomment the line below to check your state in the terminal
+    # print(f"Current State: {game_state}")
+
+    # 2. UPDATE LOGIC (Gatekept by Game State)
+    if game_state == PLAYING:
+        if game_over == 0:
+            game_over = player.update(world, game_over)
+            if not player.is_dying:
+                slime_group.update(world)
+    
+    # 3. DRAWING (Gatekept by Game State)
+    screen.fill((0, 0, 0)) # Clear everything first
+
+    if game_state == MENU:
+        menu.draw(screen) # This must be indented!
         
-                # Clear old slimes
-                slime_group.empty()
+    elif game_state == PLAYING:
+        bg_manager.draw_bg(screen)
+        world.draw()
         
-                # Recreate slimes at saved positions
-                for x, y in slime_positions:
-                    slime = Enemy(x, y)
-                    slime_group.add(slime)
+        for enemy in slime_group:
+            visual_offset_y = -35
+            screen.blit(enemy.image, (enemy.rect.x, enemy.rect.y - visual_offset_y))
+        
+        player.draw(screen)
+        
+        if game_over == -1:
+            font = pygame.font.SysFont('Arial', 40)
+            text = font.render('GAME OVER - Press R to Restart', True, (255, 255, 255))
+            screen.blit(text, (screen_width // 2 - 250, screen_height // 2))
 
     pygame.display.update()
-
 pygame.quit()
