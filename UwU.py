@@ -319,27 +319,29 @@ class Player(pygame.sprite.Sprite):
 
     # ------------------------------------------------------------------
     def _apply_physics(self, dx: int, dy: int, world) -> tuple[int, int]:
-        """Apply gravity and tile collisions; return adjusted (dx, dy)."""
+        """Apply gravity and tile collisions; return adjusted (dx, dy).
+        Never modifies self.rect directly — the caller applies the final dx/dy.
+        """
         self.vel_y = min(self.vel_y + self.GRAVITY, self.MAX_FALL_SPEED)
         dy += self.vel_y
         self.on_ground = False
 
         for _, tile_rect in world.tile_list:
-            # Horizontal
-            if tile_rect.colliderect(self.rect.x + dx, self.rect.y, 63, 63):
+            # --- Horizontal collision ---
+            if tile_rect.colliderect(self.rect.x + dx, self.rect.y, self.rect.width, self.rect.height):
                 dx = 0
-            # Vertical
-            if tile_rect.colliderect(self.rect.x, self.rect.y + dy, 63, 63):
-                if self.vel_y < 0:  # hit ceiling
-                    self.rect.top = tile_rect.bottom
-                    self.vel_y    = 0
-                else:               # land on ground
-                    self.rect.bottom = tile_rect.top
-                    self.vel_y       = 0
-                    self.on_ground   = True
-                    self.jumped      = False
-                    self.status      = "RUN" if abs(dx) > 0 else "STAND"
-                dy = 0
+
+            # --- Vertical collision ---
+            if tile_rect.colliderect(self.rect.x, self.rect.y + dy, self.rect.width, self.rect.height):
+                if self.vel_y < 0:  # hit ceiling — push down to tile bottom
+                    dy         = tile_rect.bottom - self.rect.top
+                    self.vel_y = 0
+                else:               # hit floor — push up to tile top
+                    dy             = tile_rect.top - self.rect.bottom
+                    self.vel_y     = 0
+                    self.on_ground = True
+                    self.jumped    = False
+                    self.status    = "RUN" if abs(dx) > 0 else "STAND"
 
         return dx, dy
 
@@ -494,7 +496,7 @@ class Enemy(pygame.sprite.Sprite):
         # Rects
         self.image  = self.walk_frames[0]
         self.rect   = self.image.get_rect(topleft=(x, y))
-        self.hitbox = self.rect.inflate(-20, -20)
+        self.hitbox = self.rect.inflate(-60, -60)
 
     # ------------------------------------------------------------------
     def _load_sheet(self, path: str, cols: int, row: int) -> list[pygame.Surface]:
@@ -518,6 +520,9 @@ class Enemy(pygame.sprite.Sprite):
         # Gravity + tile collision
         self.vel_y = min(self.vel_y + self.GRAVITY, self.MAX_FALL_SPEED)
         self.rect.y += self.vel_y
+        
+        self.rect.x = int(self.pos_x)
+        self.hitbox.center = self.rect.center
 
         for _, tile_rect in world.tile_list:
             if tile_rect.colliderect(self.rect):
@@ -546,9 +551,9 @@ class Enemy(pygame.sprite.Sprite):
                 self.pos_x = left
                 self.direction = 1
 
-        self.rect.x        = int(self.pos_x)
+        self.rect.x = int(self.pos_x)
         # Offset hitbox downward to match the visual draw position (drawn at rect.y + VISUAL_OFFSET_Y)
-        self.hitbox.center = (self.rect.centerx + 30, self.rect.centery + self.VISUAL_OFFSET_Y + 30)
+        self.hitbox.center = (self.rect.centerx , self.rect.centery + self.VISUAL_OFFSET_Y)
 
         # Animation
         frames = self.walk_frames if self.state == "WALKING" else self.idle_frames
@@ -561,6 +566,78 @@ class Enemy(pygame.sprite.Sprite):
     # ------------------------------------------------------------------
     def draw(self, screen: pygame.Surface) -> None:
         screen.blit(self.image, (self.rect.x, self.rect.y + self.VISUAL_OFFSET_Y))
+        
+
+# =============================================================================
+# PIXEL FONT
+# =============================================================================
+
+class PixelFont:
+    """Renders text using individual letter images from GRAPHICS/UI/LETTERS/."""
+
+    # Map each character to its filename index (1_XX.png)
+    CHAR_MAP = {
+        'A':'1_01','B':'1_02','C':'1_03','D':'1_04','E':'1_05','F':'1_06',
+        'G':'1_07','H':'1_08','I':'1_09','J':'1_10','K':'1_11','L':'1_12',
+        'M':'1_13','N':'1_14','O':'1_15','P':'1_16','Q':'1_17','R':'1_18',
+        'S':'1_19','T':'1_20','U':'1_21','V':'1_22','W':'1_23','X':'1_24',
+        'Y':'1_25','Z':'1_26',
+        '0':'1_27','1':'1_28','2':'1_29','3':'1_30','4':'1_31','5':'1_32',
+        '6':'1_33','7':'1_34','8':'1_35','9':'1_36',
+        '.':'1_37',':':'1_38',',':'1_39','+':'1_40','-':'1_41','=':'1_42',
+        ';':'1_43',"'":'1_44','#':'1_45','|':'1_46','\\':'1_47','/':'1_48',
+        '(':'1_49',')':'1_50','[':'1_51',']':'1_52','{':'1_53','}':'1_54',
+        '!':'1_55','<':'1_56','>':'1_57','?':'1_58','%':'1_60',
+    }
+    LETTER_DIR = "GRAPHICS/UI/LETTERS/"
+
+    def __init__(self, glyph_size: int = 24, spacing: int = 2):
+        self.glyph_size = glyph_size
+        self.spacing    = spacing
+        self._cache: dict[str, pygame.Surface] = {}
+
+    # ------------------------------------------------------------------
+    def _get_glyph(self, char: str) -> pygame.Surface | None:
+        """Return a scaled glyph surface, loading and caching on first use."""
+        char = char.upper()
+        if char not in self.CHAR_MAP:
+            return None
+        if char not in self._cache:
+            path = self.LETTER_DIR + self.CHAR_MAP[char] + ".png"
+            try:
+                img = pygame.image.load(path).convert()
+                img.set_colorkey((255, 255, 255))
+                self._cache[char] = pygame.transform.scale(
+                    img, (self.glyph_size, self.glyph_size)
+                )
+            except FileNotFoundError:
+                return None
+        return self._cache[char]
+
+    # ------------------------------------------------------------------
+    def render(self, text: str, screen: pygame.Surface, x: int, y: int) -> int:
+        """Draw *text* at (x, y); returns the total pixel width drawn."""
+        cursor_x = x
+        for char in text.upper():
+            if char == ' ':
+                cursor_x += self.glyph_size // 2 + self.spacing
+                continue
+            glyph = self._get_glyph(char)
+            if glyph:
+                screen.blit(glyph, (cursor_x, y))
+                cursor_x += self.glyph_size + self.spacing
+        return cursor_x - x
+
+    # ------------------------------------------------------------------
+    def text_width(self, text: str) -> int:
+        """Calculate the pixel width of *text* without drawing."""
+        width = 0
+        for char in text.upper():
+            if char == ' ':
+                width += self.glyph_size // 2 + self.spacing
+            elif char.upper() in self.CHAR_MAP:
+                width += self.glyph_size + self.spacing
+        return width
 
 
 # =============================================================================
@@ -568,27 +645,111 @@ class Enemy(pygame.sprite.Sprite):
 # =============================================================================
 
 class Menu:
-    """Language & level selection screen."""
+    """Custom-asset main menu with pixel font, logo frame, and arrow cursor."""
 
-    LANGUAGES   = ["Python", "Java", "JavaScript", "HTML", "CSS"]
-    BTN_X       = 100
-    BTN_Y_START = 150
-    BTN_STEP    = 60
-    BTN_W, BTN_H = 200, 50
+    LANGUAGES    = ["Python", "Java", "JavaScript", "HTML", "CSS"]
+    BTN_X        = 350          # left edge of the button column
+    BTN_Y_START  = 480          # y of first button label
+    BTN_STEP     = 70           # vertical gap between buttons
+    GLYPH_SIZE   = 28           # letter size for buttons
+    TITLE_GLYPH  = 36           # letter size for the title
 
     def __init__(self):
-        self.font = pygame.font.SysFont("Arial", 30)
+        self.font        = PixelFont(self.GLYPH_SIZE)
+        self.title_font  = PixelFont(self.TITLE_GLYPH)
+        self.hovered     = -1   # index of button under cursor (-1 = none)
+
+        # --- Load UI assets ---
+        self.logo  = self._load_logo()
+        self.arrow = self._load_arrow()
 
     # ------------------------------------------------------------------
-    def draw(self, screen: pygame.Surface) -> None:
-        screen.fill(DARK)
-        title = self.font.render("SELECT LANGUAGE & LEVEL", True, WHITE)
-        screen.blit(title, (300, 50))
+    def _load_logo(self) -> pygame.Surface | None:
+        try:
+            img = pygame.image.load("GRAPHICS/UI/Logo.png").convert_alpha()
+            # Scale to span most of the screen width as a title frame
+            return pygame.transform.scale(img, (700, 120))
+        except FileNotFoundError:
+            return None
 
+    # ------------------------------------------------------------------
+    def _load_arrow(self) -> pygame.Surface | None:
+        try:
+            img = pygame.image.load("GRAPHICS/UI/Arrow.png").convert_alpha()
+            return pygame.transform.scale(img, (36, 36))
+        except FileNotFoundError:
+            return None
+
+    # ------------------------------------------------------------------
+    def draw(self, screen: pygame.Surface, mouse_pos: tuple[int, int]) -> None:
+        screen.fill(DARK)
+
+        # --- Title frame (Logo.png) ---
+        title_text = "THE SYNTAX ESCAPE"
+        if self.logo:
+            logo_x = SCREEN_WIDTH // 2 - self.logo.get_width() // 2
+            logo_y = 80
+            screen.blit(self.logo, (logo_x, logo_y))
+            
+            vertical_offset = -16
+            # Centre the title text inside the logo frame
+            tw = self.title_font.text_width(title_text)
+            tx = SCREEN_WIDTH // 2 - tw // 2
+            ty = (logo_y + self.logo.get_height() // 2 - self.TITLE_GLYPH // 2) + vertical_offset
+            self.title_font.render(title_text, screen, tx, ty)
+        else:
+            # Fallback if logo is missing
+            tw = self.title_font.text_width(title_text)
+            self.title_font.render(title_text, screen, SCREEN_WIDTH // 2 - tw // 2, 100)
+
+        # --- Sub-heading ---
+        sub = "SELECT LANGUAGE"
+        sw  = self.font.text_width(sub)
+        self.font.render(sub, screen, SCREEN_WIDTH // 2 - sw // 2, 390)
+
+        # --- Detect hovered button ---
+        self.hovered = -1
         for i, lang in enumerate(self.LANGUAGES):
-            rect = self._button_rect(i)
-            pygame.draw.rect(screen, GREEN, rect, 2)
-            screen.blit(self.font.render(lang, True, WHITE), (rect.x + 10, rect.y + 10))
+            if self._button_rect(i).collidepoint(mouse_pos):
+                self.hovered = i
+
+        # --- Draw language buttons ---
+        for i, lang in enumerate(self.LANGUAGES):
+            rect      = self._button_rect(i)
+            is_hovered = (i == self.hovered)
+            colour    = (255, 215, 0) if is_hovered else WHITE
+
+            # Highlight bar behind hovered item
+            if is_hovered:
+                highlight = pygame.Surface((rect.width + 20, rect.height), pygame.SRCALPHA)
+                highlight.fill((255, 255, 255, 25))
+                screen.blit(highlight, (rect.x - 10, rect.y))
+
+            lw = self.font.text_width(lang)
+            lx = SCREEN_WIDTH // 2 - lw // 2
+            ly = rect.y + rect.height // 2 - self.GLYPH_SIZE // 2
+
+            # Draw arrow to the left of hovered item
+            if is_hovered and self.arrow:
+                ax = lx - self.arrow.get_width() - 12
+                ay = ly + self.GLYPH_SIZE // 2 - self.arrow.get_height() // 2
+                screen.blit(self.arrow, (ax, ay))
+
+            # Temporarily tint glyphs gold on hover by drawing with a colour overlay
+            if is_hovered:
+                # Render to temp surface so we can tint it
+                tmp = pygame.Surface((lw, self.GLYPH_SIZE), pygame.SRCALPHA)
+                self.font.render(lang, tmp, 0, 0)
+                tint = pygame.Surface((lw, self.GLYPH_SIZE), pygame.SRCALPHA)
+                tint.fill((255, 215, 0, 120))
+                tmp.blit(tint, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                screen.blit(tmp, (lx, ly))
+            else:
+                self.font.render(lang, screen, lx, ly)
+
+        # --- Custom arrow cursor ---
+        if self.arrow:
+            screen.blit(self.arrow, mouse_pos)
 
     # ------------------------------------------------------------------
     def handle_click(self, pos: tuple[int, int]) -> str | None:
@@ -600,11 +761,12 @@ class Menu:
 
     # ------------------------------------------------------------------
     def _button_rect(self, index: int) -> pygame.Rect:
+        lw = self.font.text_width(self.LANGUAGES[index])
         return pygame.Rect(
-            self.BTN_X,
+            SCREEN_WIDTH // 2 - lw // 2 - 20,
             self.BTN_Y_START + index * self.BTN_STEP,
-            self.BTN_W,
-            self.BTN_H,
+            lw + 40,
+            self.GLYPH_SIZE + 16,
         )
 
 
@@ -620,11 +782,19 @@ def spawn_slimes(slime_group: pygame.sprite.Group) -> None:
 
 
 def reset_game(player: Player, slime_group: pygame.sprite.Group) -> None:
-    """Reset player position and re-spawn all enemies."""
-    player.rect.x      = -5
-    player.rect.y      = SCREEN_HEIGHT - 350
-    player.respawn_time = pygame.time.get_ticks()
-    player.is_dying    = False
+    """Reset player position, physics, and re-spawn all enemies."""
+    player.rect.x         = -5
+    player.rect.y         = SCREEN_HEIGHT - 350
+    player.hitbox.center  = player.rect.center   # sync hitbox immediately
+    player.vel_y          = 0                    # clear any leftover fall speed
+    player.jumped         = False
+    player.on_ground      = False
+    player.is_dying       = False
+    player.is_playing_idle = False
+    player.status         = "STAND"
+    player.frame_index    = 0.0
+    player.respawn_time   = pygame.time.get_ticks()
+    player.last_action_time = pygame.time.get_ticks()
     spawn_slimes(slime_group)
 
 
@@ -637,12 +807,14 @@ def main() -> None:
 
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption(TITLE)
+    pygame.mouse.set_visible(False)   # replaced by Arrow.png cursor
     clock = pygame.time.Clock()
 
     # --- Core objects ---
     bg_manager  = BackgroundManager()
     menu        = Menu()
     player      = Player(-5, SCREEN_HEIGHT - 350)
+    player.respawn_time = pygame.time.get_ticks()  # grace period from the very start
     slime_group = pygame.sprite.Group()
     world       = None          # Created after language selection
     game_over   = 0
@@ -671,6 +843,7 @@ def main() -> None:
                     slime_group.empty()
                     world = World(WORLD_DATA, selected_level, slime_group)
                     game_state = PLAYING
+                    pygame.mouse.set_visible(True)   # restore cursor in game
                     print(f"Started {selected_language} – Level {selected_level}")
 
             elif game_state == PLAYING and event.type == pygame.KEYDOWN:
@@ -682,6 +855,7 @@ def main() -> None:
                 if event.key == pygame.K_r:
                     game_over  = 0
                     game_state = MENU
+                    pygame.mouse.set_visible(False)
                     reset_game(player, slime_group)
 
         # -----------------------------------------------------------------
@@ -705,7 +879,7 @@ def main() -> None:
         screen.fill(BLACK)
 
         if game_state == MENU:
-            menu.draw(screen)
+            menu.draw(screen, pygame.mouse.get_pos())
 
         elif game_state == PLAYING:
             bg_manager.draw(screen)
