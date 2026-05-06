@@ -1,6 +1,7 @@
 import os
 import pygame
 from pygame.locals import *
+import random
 
 
 # =============================================================================
@@ -16,12 +17,14 @@ TITLE         = "THE-SYNTAX-ESCAPE"
 # --- World ---
 TILE_SIZE = 40
 
+
 # --- Game States ---
 MENU    = 0
 PLAYING = 1
 QUIZ    = 2
 WIN     = 3
 PAUSED  = 4
+WORLD_MAP = 5
 
 # --- Tile IDs ---
 TILE_BLOCK = 1
@@ -36,23 +39,114 @@ WHITE  = (255, 255, 255)
 GREEN  = (0,   255, 0)
 DARK   = (20,  20,  20)
 GOLD   = (255, 215, 0)
+CYAN       = (0,   210, 210)   
+NEON_GREEN = (0,   220, 100)  
 
-# --- FIX 3 & 4: Acceleration-based physics with asymmetric gravity ---
-#
-#   Old code:  dx = ±MOVE_SPEED  (binary ON/OFF, instant top speed)
-#   New code:  vel_x accelerates toward PLAYER_MAX_SPEED, bleeds off via FRICTION
-#
-#   Old gravity: same force going up and down  → "floaty balloon" arc
-#   New gravity: 2× stronger on the way down   → short snappy arc, authoritative landing
-#
-PLAYER_ACCEL     = 1.2    # speed added per frame while key held
-PLAYER_FRICTION  = 0.70   # velocity multiplier per frame when no key held (lower = snappier stop)
-PLAYER_MAX_SPEED = 7      # px/frame horizontal cap
-PLAYER_JUMP      = -17    # initial upward velocity
-PLAYER_GRAV_UP   = 1.2    # gravity while rising
-PLAYER_GRAV_DOWN = 2.6    # gravity while falling  (makes landing feel heavy and decisive)
-PLAYER_MAX_FALL  = 22     # terminal velocity
+PLAYER_ACCEL     = 1.2    
+PLAYER_FRICTION  = 0.70   
+PLAYER_MAX_SPEED = 7      
+PLAYER_JUMP      = -17    
+PLAYER_GRAV_UP   = 1.2    
+PLAYER_GRAV_DOWN = 2.6    
+PLAYER_MAX_FALL  = 22     
+MAX_HP = 5
 
+QUIZ_QUESTIONS = {
+    "Python": [
+        {"q": "Which keyword defines a function in Python?",
+        "options": ["def", "fun", "function", "define"], "answer": 0},
+        {"q": "How do you print output in Python?",
+        "options": ["print()", "echo()", "console.log()", "printf()"], "answer": 0},
+        {"q": "Which creates an empty list?",
+        "options": ["[]", "{}", "()", "list{}"], "answer": 0},
+        {"q": "How do you add an item to a list?",
+        "options": [".append()", ".add()", ".push()", ".insert()"], "answer": 0},
+        {"q": "Which is the correct comment syntax?",
+         "options": ["# comment", "// comment", "/* comment */", "-- comment"], "answer": 0},
+        {"q": "What does len([1,2,3]) return?",
+        "options": ["3", "2", "4", "0"], "answer": 0},
+        {"q": "Which keyword starts a loop over a list?",
+        "options": ["for x in", "foreach x", "loop x in", "each x of"], "answer": 0},
+        {"q": "How do you check equality in Python?",
+        "options": ["==", "=", "===", ":="], "answer": 0},
+        {"q": "Which creates a dictionary?",
+        "options": ["{}", "[]", "()", "<>"], "answer": 0},
+        {"q": "What keyword skips to the next loop iteration?",
+        "options": ["continue", "skip", "next", "pass"], "answer": 0},
+    ],
+    "Java": [
+        {"q": "Which keyword declares a constant in Java?",
+        "options": ["final", "const", "static", "fixed"], "answer": 0},
+        {"q": "Correct way to print in Java?",
+        "options": ["System.out.println()", "print()", "console.log()", "echo()"], "answer": 0},
+        {"q": "Which is the correct main method signature?",
+        "options": ["public static void main(String[] args)", "void main()", "static main()", "public main(String args)"], "answer": 0},
+        {"q": "How do you create an object in Java?",
+        "options": ["new ClassName()", "create ClassName()", "make ClassName()", "ClassName.new()"], "answer": 0},
+        {"q": "Which keyword handles exceptions?",
+        "options": ["try/catch", "attempt/handle", "check/error", "begin/rescue"], "answer": 0},
+        {"q": "What is the correct way to declare an int?",
+        "options": ["int x = 5;", "x = 5;", "integer x = 5;", "var x = 5;"], "answer": 0},
+        {"q": "Which access modifier is most restrictive?",
+        "options": ["private", "public", "protected", "internal"], "answer": 0},
+        {"q": "How do you extend a class in Java?",
+        "options": ["extends", "inherits", "implements", "uses"], "answer": 0},
+    ],
+    "JavaScript": [
+        {"q": "Which keyword declares a block-scoped variable?",
+        "options": ["let", "var", "dim", "int"], "answer": 0},
+        {"q": "How do you write an arrow function?",
+        "options": ["() => {}", "() -> {}", "fn() {}", "lambda() {}"], "answer": 0},
+        {"q": "Which method adds to end of an array?",
+        "options": [".push()", ".append()", ".add()", ".insert()"], "answer": 0},
+        {"q": "Correct way to print to console?",
+        "options": ["console.log()", "print()", "System.out.println()", "echo()"], "answer": 0},
+        {"q": "Which checks strict equality?",
+        "options": ["===", "==", "=", "equals()"], "answer": 0},
+        {"q": "How do you declare a constant?",
+        "options": ["const", "final", "fixed", "let"], "answer": 0},
+        {"q": "Which loops over array elements?",
+        "options": ["forEach()", "forAll()", "each()", "loop()"], "answer": 0},
+        {"q": "How do you create a Promise?",
+        "options": ["new Promise()", "Promise.create()", "async()", "await()"], "answer": 0},
+    ],
+    "HTML": [
+        {"q": "Which tag creates a hyperlink?",
+        "options": ["<a>", "<link>", "<href>", "<url>"], "answer": 0},
+        {"q": "Which is the correct DOCTYPE for HTML5?",
+        "options": ["<!DOCTYPE html>", "<!DOCTYPE HTML5>", "<html>", "<!HTML>"], "answer": 0},
+        {"q": "Which tag creates a paragraph?",
+        "options": ["<p>", "<para>", "<pg>", "<txt>"], "answer": 0},
+        {"q": "Which tag is used for the largest heading?",
+        "options": ["<h1>", "<h6>", "<head>", "<title>"], "answer": 0},
+        {"q": "How do you insert an image?",
+        "options": ["<img src=''>", "<image src=''>", "<pic href=''>", "<src img=''>"], "answer": 0},
+        {"q": "Which attribute links CSS to HTML?",
+        "options": ["<link rel='stylesheet'>", "<style src=''>", "<css href=''>", "<import css=''>"], "answer": 0},
+        {"q": "Which tag creates an unordered list?",
+        "options": ["<ul>", "<ol>", "<li>", "<list>"], "answer": 0},
+        {"q": "Which tag makes text bold?",
+        "options": ["<b> or <strong>", "<bold>", "<thick>", "<em>"], "answer": 0},
+    ],
+    "CSS": [
+        {"q": "How do you select an element with id 'box'?",
+        "options": ["#box", ".box", "box", "*box"], "answer": 0},
+        {"q": "Which property changes text color?",
+        "options": ["color", "text-color", "font-color", "foreground"], "answer": 0},
+        {"q": "How do you center a block element?",
+        "options": ["margin: 0 auto", "align: center", "center: block", "position: center"], "answer": 0},
+        {"q": "Which property controls spacing inside an element?",
+        "options": ["padding", "margin", "border", "spacing"], "answer": 0},
+        {"q": "How do you make text bold in CSS?",
+        "options": ["font-weight: bold", "text-weight: bold", "font-style: bold", "text-bold: true"], "answer": 0},
+        {"q": "Which display value makes elements sit side by side?",
+        "options": ["flex", "block", "inline-block", "Both C and B"], "answer": 2},
+        {"q": "Which unit is relative to viewport width?",
+        "options": ["vw", "px", "em", "rem"], "answer": 0},
+        {"q": "How do you apply a class selector?",
+        "options": [".classname", "#classname", "classname", "@classname"], "answer": 0},
+    ],
+}
 
 # =============================================================================
 # WORLD DATA
@@ -78,22 +172,311 @@ WORLD_DATA = [
     [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
     [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
     [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0],  # gate
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2,2],
-    [0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,2,2,2,2,2,2,2],  # enemy
-    [2,2,2,2,0,0,0,0,3,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1],
-    [1,1,1,1,0,0,0,0,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,1,1,1,0,0,0,0,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,1,1,1,0,0,0,0,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # gate
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # enemy
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
 ]
 # fmt: on
-
-SLIME_SPAWN_POSITIONS = [
-    (col * TILE_SIZE, row * TILE_SIZE)
-    for row, tiles in enumerate(WORLD_DATA)
-    for col, tile  in enumerate(tiles)
-    if tile == TILE_ENEMY
+WORLD_DATA1 = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # gate
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # enemy
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [2,2,0,0,0,0,2,2,0,0,0,2,2,0,0,0,2,2,0,0,2,0,0,5,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
 ]
+WORLD_DATA2 = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # gate
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # enemy
+    [2,2,2,0,0,0,0,0,2,0,2,0,2,0,2,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,0,0,0,0,2,1,0,0,0,0,0,1,2,0,0,0,0,0,0,0,0,0],
+    [1,1,1,0,0,2,2,1,1,1,1,1,1,0,1,1,2,0,0,0,0,0,0,5,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+WORLD_DATA3 = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # gate
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0],
+    [0,0,0,0,0,0,0,0,0,2,0,3,0,3,0,3,0,3,0,3,3,3,3,3,3],  # enemy
+    [2,0,0,0,0,0,0,0,2,1,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3],
+    [1,2,0,0,0,0,0,2,1,1,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3],
+    [1,1,2,0,0,0,2,1,1,1,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+WORLD_DATA4 = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # gate
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # enemy
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,5,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+WORLD_DATA5 = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # gate
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # enemy
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,4,0,0,0,4,0,0,0,0,0,0,0,0,0,0,5,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+WORLD_DATA6 = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # gate
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # enemy
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,4,0,0,4,0,0,0,4,0,0,0,0,0,0,0,5,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+WORLD_DATA7 = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # gate
+    [0,0,0,0,0,0,0,0,4,0,0,0,0,3,0,3,0,0,0,0,0,0,0,0,0],
+    [2,2,2,2,2,0,2,2,2,2,2,0,0,3,0,0,0,0,0,0,0,0,0,0,0],  # enemy
+    [1,1,1,1,1,0,0,0,0,0,0,0,0,3,0,0,0,3,0,0,0,0,0,0,0],
+    [1,1,1,1,1,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,0,4,0,4,0,4,0,0,3,0,0,0,0,0,3,0,0,0,5,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+WORLD_DATA8 = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # gate
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # enemy
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,4,4,4,4,4,4,0,0,0,0,0,0,0,5,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+WORLD_DATA9 = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # gate
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # enemy
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,4,3,4,3,4,3,4,3,4,3,0,0,0,0,0,0,0,5,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+WORLD_DATA10 = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # gate
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],  # enemy
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,5,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+# =============================================================================
+# WORLD LEVELS LIST
+# =============================================================================
+
+WORLD_DATA_LEVELS = [
+    WORLD_DATA,    # Level 1
+    WORLD_DATA1,   # Level 2  
+    WORLD_DATA2,   # Level 3
+    WORLD_DATA3,   # Level 4
+    WORLD_DATA4,   # Level 5
+    WORLD_DATA5,   # Level 6
+    WORLD_DATA6,   # Level 7
+    WORLD_DATA7,   # Level 8
+    WORLD_DATA8,   # Level 9
+    WORLD_DATA10,  # Level 10 (note: you have WORLD_DATA9 and WORLD_DATA10)
+]
+
+def get_slime_spawn_positions(world_data):
+    """Get slime spawn positions for any level."""
+    return [
+        (col * TILE_SIZE, row * TILE_SIZE)
+        for row, tiles in enumerate(world_data)
+        for col, tile in enumerate(tiles)
+        if tile == TILE_ENEMY
+    ]
 
 
 # =============================================================================
@@ -207,13 +590,6 @@ class BackgroundManager:
 # =============================================================================
 
 class Player(pygame.sprite.Sprite):
-    """
-    Smooth, professional-feeling platformer character.
-
-    FIX 3: Horizontal movement uses acceleration + friction instead of binary on/off.
-    FIX 4: Asymmetric gravity — lighter on the way up, heavy on the way down.
-    FIX 7: Float positions tracked internally; rect is always integer-snapped.
-    """
 
     ANIMATION_SPEED  = 0.10
     IDLE_WAIT_MS     = 5_000
@@ -227,12 +603,15 @@ class Player(pygame.sprite.Sprite):
         self.status       = "STAND"
         self.frame_index  = 0.0
         self.facing_right = True
+        self.hp      = MAX_HP
+        self.max_hp  = MAX_HP
+        self.quiz_trigger_slime = None 
 
         self._load_animations()
 
         self.image  = self.animations["IDLE"][0] if self.animations["IDLE"] else pygame.Surface((64, 64))
         self.rect   = self.image.get_rect(topleft=(x, y))
-        self.hitbox = self.rect.inflate(-20, -10)
+        self.hitbox = self.rect.inflate(-28, -40)
 
         # FIX 7: float sub-pixel positions — rect is derived from these, never the other way
         self.pos_x = float(x)
@@ -249,6 +628,8 @@ class Player(pygame.sprite.Sprite):
         self.respawn_time     = 0
         self.last_action_time = pygame.time.get_ticks()
         self.is_playing_idle  = False
+        
+        
 
     # ------------------------------------------------------------------
     def _load_animations(self) -> None:
@@ -331,10 +712,6 @@ class Player(pygame.sprite.Sprite):
 
     # ------------------------------------------------------------------
     def _apply_physics(self, world) -> None:
-        """
-        FIX 4: Apply asymmetric gravity — 2× stronger force on the way down.
-        FIX 7: Accumulate movement in floats; snap rect to integers before collision.
-        """
         # FIX 4: asymmetric gravity
         grav        = PLAYER_GRAV_UP if self.vel_y < 0 else PLAYER_GRAV_DOWN
         self.vel_y  = min(self.vel_y + grav, PLAYER_MAX_FALL)
@@ -405,11 +782,10 @@ class Player(pygame.sprite.Sprite):
 
         self._apply_physics(world)
 
-        if not in_grace:
+        if not in_grace and self.quiz_trigger_slime is None:
             for slime in slime_group:
                 if self.hitbox.colliderect(slime.hitbox):
-                    self.is_dying   = True
-                    self.death_time = pygame.time.get_ticks()
+                    self.quiz_trigger_slime = slime
                     break
 
         self._animate()
@@ -417,7 +793,7 @@ class Player(pygame.sprite.Sprite):
 
     # ------------------------------------------------------------------
     def draw(self, screen: pygame.Surface) -> None:
-        screen.blit(self.image, (self.rect.x, self.rect.y + 10))
+        screen.blit(self.image, (self.rect.x, self.rect.y + 11))
 
 
 # =============================================================================
@@ -463,41 +839,327 @@ class World:
         for gate in self.gate_group:
             gate.draw(screen)
 
+# =============================================================================
+# WORLD MAP SCREEN
+# =============================================================================
+
+class WorldMapScreen:
+    """
+    Hacker / glitch-themed level select.
+    Matrix rain  ·  scanlines  ·  glitch slices  ·  circuit-board node path
+    """
+    NODE_RADIUS  = 32
+    COLS_PER_ROW = 5
+    MATRIX_CHARS = "アイウエオ0123456789ABCDEF<>{}[]|\\/#@!?01"
+
+    def __init__(self, total_levels: int = 10):
+        self.total_levels = total_levels
+        self.font        = PixelFont(22)
+        self.title_font  = PixelFont(36)
+        self.small_font  = PixelFont(10)
+
+        # Matrix rain columns
+        col_count = SCREEN_WIDTH // 20
+        self.rain_cols = [
+            {"x": i * 20,
+             "y": random.randint(-SCREEN_HEIGHT, 0),
+             "speed":  random.randint(3, 8),
+             "length": random.randint(8, 20)}
+            for i in range(col_count)
+        ]
+
+        # Glitch state
+        self.glitch_active   = False
+        self.glitch_timer    = 0
+        self.glitch_cooldown = 0
+        self.glitch_slices   = []
+
+        # Title twitch
+        self._title_dx    = 0
+        self._title_tick  = 0
+
+        # Scanline overlay (built once)
+        self._scanlines = self._make_scanlines()
+
+        # Node layout
+        self._node_pos = self._compute_nodes()
+
+        # Click flash
+        self._flash_node : int | None = None
+        self._flash_time : int        = 0
+
+        # Sys-font for matrix characters
+        self._mfont = pygame.font.SysFont("courier", 16, bold=True)
+
+        # Back button
+        self._back_rect = pygame.Rect(30, 30, 140, 40)
+
+    # ------------------------------------------------------------------
+    def _make_scanlines(self):
+        surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        for y in range(0, SCREEN_HEIGHT, 3):
+            pygame.draw.line(surf, (0, 0, 0, 55), (0, y), (SCREEN_WIDTH, y))
+        return surf
+
+    def _compute_nodes(self):
+        positions = []
+        margin_x  = 120
+        margin_y  = 280
+        spacing_x = (SCREEN_WIDTH - 2 * margin_x) // (self.COLS_PER_ROW - 1)
+        spacing_y = 260
+        for i in range(self.total_levels):
+            row = i // self.COLS_PER_ROW
+            col = i  % self.COLS_PER_ROW
+            if row % 2 == 1:            # snake: right-to-left on even row index
+                col = self.COLS_PER_ROW - 1 - col
+            x = margin_x + col * spacing_x
+            y = margin_y + row * spacing_y
+            positions.append((x, y))
+        return positions
+
+    def _trigger_glitch(self):
+        self.glitch_slices = [
+            (random.randint(0, SCREEN_HEIGHT - 40),
+             random.randint(4, 28),
+             random.randint(-25, 25),
+             random.choice([(255,0,0,35),(0,255,255,35),(255,255,0,25)]))
+            for _ in range(random.randint(2, 5))
+        ]
+        self.glitch_active   = True
+        self.glitch_timer    = random.randint(3, 7)
+        self.glitch_cooldown = random.randint(60, 200)
+
+    # ------------------------------------------------------------------
+    def update(self):
+        # Rain
+        for col in self.rain_cols:
+            col["y"] += col["speed"]
+            if col["y"] > SCREEN_HEIGHT + col["length"] * 18:
+                col["y"]      = random.randint(-200, -20)
+                col["speed"]  = random.randint(3, 8)
+                col["length"] = random.randint(8, 20)
+
+        # Glitch trigger
+        if self.glitch_cooldown > 0:
+            self.glitch_cooldown -= 1
+        elif random.random() < 0.02:
+            self._trigger_glitch()
+        if self.glitch_active:
+            self.glitch_timer -= 1
+            if self.glitch_timer <= 0:
+                self.glitch_active = False
+
+        # Title twitch
+        self._title_tick -= 1
+        if self._title_tick <= 0:
+            self._title_dx   = random.randint(-6, 6) if random.random() < 0.25 else 0
+            self._title_tick = random.randint(4, 20)
+
+    # ------------------------------------------------------------------
+    def _dashed_line(self, screen, color, p1, p2, dash=14, gap=7, w=2):
+        dx, dy = p2[0]-p1[0], p2[1]-p1[1]
+        length = max(1, (dx*dx + dy*dy)**0.5)
+        ux, uy = dx/length, dy/length
+        pos, draw = 0, True
+        while pos < length:
+            seg = dash if draw else gap
+            x1 = p1[0] + ux * pos;         y1 = p1[1] + uy * pos
+            x2 = p1[0] + ux * min(pos+seg, length)
+            y2 = p1[1] + uy * min(pos+seg, length)
+            if draw:
+                pygame.draw.line(screen, color,
+                                 (round(x1), round(y1)),
+                                 (round(x2), round(y2)), w)
+            pos += seg;  draw = not draw
+
+    def _node_rect(self, i):
+        cx, cy = self._node_pos[i]
+        r = self.NODE_RADIUS + 8
+        return pygame.Rect(cx - r, cy - r, r*2, r*2)
+
+    # ------------------------------------------------------------------
+    def draw(self, screen: pygame.Surface, mouse_pos: tuple,
+             highest_unlocked: int) -> None:
+        screen.fill((2, 8, 2))
+
+        # ── Matrix rain ──────────────────────────────────────────────
+        for col in self.rain_cols:
+            for i in range(col["length"]):
+                cy = col["y"] - i * 18
+                if cy < 0 or cy > SCREEN_HEIGHT:
+                    continue
+                ch = random.choice(self.MATRIX_CHARS)
+                if i == 0:
+                    color = (200, 255, 200)
+                elif i < 3:
+                    color = (0, 220, 80)
+                else:
+                    color = (0, max(30, 110 - i*7), 0)
+                screen.blit(self._mfont.render(ch, True, color), (col["x"], cy))
+
+        # ── Dark overlay ─────────────────────────────────────────────
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, 155))
+        screen.blit(ov, (0, 0))
+
+        # ── Glitch slices ────────────────────────────────────────────
+        if self.glitch_active:
+            for (gy, gh, goff, gcol) in self.glitch_slices:
+                band = pygame.Surface((SCREEN_WIDTH, gh), pygame.SRCALPHA)
+                band.fill(gcol)
+                screen.blit(band, (0, gy))
+                safe_w = SCREEN_WIDTH - abs(goff)
+                if safe_w > 0 and gh > 0:
+                    try:
+                        sl = screen.subsurface(
+                            pygame.Rect(0, gy, safe_w, gh)).copy()
+                        screen.blit(sl, (goff, gy))
+                    except ValueError:
+                        pass
+
+        # ── Scanlines ────────────────────────────────────────────────
+        screen.blit(self._scanlines, (0, 0))
+
+        # ── Title ────────────────────────────────────────────────────
+        title = "// WORLD MAP //"
+        tw    = self.title_font.text_width(title)
+        tx    = SCREEN_WIDTH // 2 - tw // 2 + self._title_dx
+        ty    = 40
+        if self._title_dx != 0:
+            # Red ghost offset
+            self.title_font.render(title, screen, tx + 4, ty, color=WHITE)
+        self.title_font.render(title, screen, tx, ty, color=WHITE)
+        line_y = ty + self.title_font.glyph_size + 10
+        pygame.draw.line(screen, (0, 255, 100), (60, line_y),(SCREEN_WIDTH - 60, line_y), 2)
+
+        # ── Path connectors ──────────────────────────────────────────
+        for i in range(len(self._node_pos) - 1):
+            x1, y1 = self._node_pos[i]
+            x2, y2 = self._node_pos[i + 1]
+            unlocked_next = (i + 2) <= highest_unlocked
+            color = (0, 180, 80) if unlocked_next else (30, 55, 30)
+            self._dashed_line(screen, color, (x1, y1), (x2, y2))
+
+        # ── Nodes ────────────────────────────────────────────────────
+        now = pygame.time.get_ticks()
+        for i, (cx, cy) in enumerate(self._node_pos):
+            lvl       = i + 1
+            unlocked  = lvl <= highest_unlocked
+            hovered   = unlocked and self._node_rect(i).collidepoint(mouse_pos)
+            flashing  = (self._flash_node == i and
+                         now - self._flash_time < 150)
+
+            # Pulse ring on highest reached node
+            if unlocked and lvl == highest_unlocked:
+                pulse = abs((now % 1200) - 600) / 600
+                pr    = int(self.NODE_RADIUS + 6 + pulse * 8)
+                ps    = pygame.Surface((pr*2+4, pr*2+4), pygame.SRCALPHA)
+                pygame.draw.circle(ps, (0, 255, 80, int(70 * pulse)),
+                                   (pr+2, pr+2), pr, 2)
+                screen.blit(ps, (cx - pr - 2, cy - pr - 2))
+
+            # Fill + ring
+            fill = ((0, 255, 150) if flashing
+                    else (0, 55, 28) if hovered
+                    else (0, 25, 12) if unlocked
+                    else (8, 12, 8))
+            ring = ((255, 255, 255) if flashing
+                    else (0, 255, 100) if hovered
+                    else (0, 200, 80) if unlocked
+                    else (35, 55, 35))
+
+            pygame.draw.circle(screen, fill, (cx, cy), self.NODE_RADIUS)
+            pygame.draw.circle(screen, ring, (cx, cy), self.NODE_RADIUS, 3)
+
+            # Corner brackets on unlocked nodes
+            if unlocked:
+                br   = self.NODE_RADIUS + 7
+                blen = 10
+                bc   = (0, 255, 100) if hovered else (0, 140, 55)
+                for sx, sy, dx, dy in [
+                    (-1, -1,  1,  0), (-1, -1,  0,  1),
+                    ( 1, -1, -1,  0), ( 1, -1,  0,  1),
+                    (-1,  1,  1,  0), (-1,  1,  0, -1),
+                    ( 1,  1, -1,  0), ( 1,  1,  0, -1),
+                ]:
+                    ox, oy = cx + sx*br, cy + sy*br
+                    pygame.draw.line(screen, bc,
+                                     (ox, oy), (ox + dx*blen, oy + dy*blen), 2)
+
+            # Level number
+            lbl = str(lvl)
+            lw  = self.font.text_width(lbl)
+            tc  = (0, 255, 120) if unlocked else (35, 60, 35)
+            self.font.render(lbl, screen, cx - lw//2, cy - self.font.glyph_size//2, color=WHITE)
+            
+            # Padlock on locked nodes
+            if not unlocked:
+                pygame.draw.rect(screen, (40, 65, 40),(cx - 7, cy + 2, 14, 11))
+                pygame.draw.arc(screen, (40, 65, 40),
+                                pygame.Rect(cx - 6, cy - 8, 12, 14),
+                                0, 3.14159, 2)
+
+        # ── Back button ──────────────────────────────────────────────
+        bh = self._back_rect.collidepoint(mouse_pos)
+        pygame.draw.rect(screen,(0, 180, 70) if bh else (0, 80, 30),self._back_rect, 2)
+        bl = self.small_font.text_width("< MAIN MENU")
+        self.small_font.render("< MAIN MENU", screen,self._back_rect.centerx - bl//2,self._back_rect.centery - self.small_font.glyph_size//2,color=WHITE)
+
+    # ------------------------------------------------------------------
+    def handle_click(self, pos, highest_unlocked: int):
+        """
+        Returns level number (1-based) if a node was clicked,
+        0 if Back was clicked, None otherwise.
+        """
+        if self._back_rect.collidepoint(pos):
+            return 0
+        for i in range(len(self._node_pos)):
+            if (i + 1) <= highest_unlocked and self._node_rect(i).collidepoint(pos):
+                self._flash_node = i
+                self._flash_time = pygame.time.get_ticks()
+                return i + 1
+        return None
+
 
 # =============================================================================
 # ENEMY  (Slime)
 # =============================================================================
 
 class Enemy(pygame.sprite.Sprite):
-    MOVE_SPEED      = 1.5
-    PATROL_WIDTH    = 100
-    ANIM_SPEED      = 0.15
-    GRAVITY         = 1
-    MAX_FALL_SPEED  = 10
-    WALK_DURATION   = 5 * FPS
-    IDLE_DURATION   = 3 * FPS
-    SCALE_FACTOR    = 1.5
-    VISUAL_OFFSET_Y = 35
+    MOVE_SPEED     = 1.5
+    PATROL_RADIUS  = 1.5 * TILE_SIZE   # 1.5 tiles each side = 3 tiles total
+    ANIM_SPEED     = 0.15
+    GRAVITY        = 1
+    MAX_FALL_SPEED = 10
+    SCALE_FACTOR   = 1.5
+    VISUAL_OFFSET_Y= 35
+    WALK_FRAMES_AT_SPEED = int(PATROL_RADIUS / MOVE_SPEED)  # frames to cross one side
+
+    # How long to idle at each end (frames)
+    IDLE_DURATION  = 90   # ~1.5 seconds at 60fps
 
     def __init__(self, x: int, y: int):
         super().__init__()
         self.idle_frames = self._load_sheet("GRAPHICS/Enemies/Slime1.png", cols=6, row=2)
         self.walk_frames = self._load_sheet("GRAPHICS/Enemies/Slime2.png", cols=8, row=2)
 
-        self.state     = "WALKING"
-        self.direction = 1
+        # Fixed anchor — patrol never drifts from spawn
+        self.anchor_x  = float(x)
         self.pos_x     = float(x)
-        self.center_x  = float(x)
         self.vel_y     = 0
-        self.timer     = 0
+        self.on_ground = False
 
-        self.state_durations = {"WALKING": self.WALK_DURATION, "IDLE": self.IDLE_DURATION}
-
+        # State: "WALK_LEFT" → "IDLE" → "WALK_RIGHT" → "IDLE" → repeat
+        self.state     = "WALK_LEFT"
+        self.direction = -1          # -1 = left, +1 = right
+        self.idle_timer= 0
         self.current_frame = 0.0
+
         self.image  = self.walk_frames[0]
         self.rect   = self.image.get_rect(topleft=(x, y))
         self.hitbox = self.rect.inflate(-60, -60)
 
+    # ------------------------------------------------------------------
     def _load_sheet(self, path: str, cols: int, row: int) -> list[pygame.Surface]:
         sheet   = pygame.image.load(path).convert_alpha()
         frame_w = sheet.get_width()  // cols
@@ -512,40 +1174,77 @@ class Enemy(pygame.sprite.Sprite):
             for i in range(cols)
         ]
 
+    # ------------------------------------------------------------------
     def update(self, world) -> None:
-        self.vel_y  = min(self.vel_y + self.GRAVITY, self.MAX_FALL_SPEED)
-        self.rect.y += self.vel_y
+        # ── State Machine ─────────────────────────────────────────────
+        left_bound  = self.anchor_x - self.PATROL_RADIUS
+        right_bound = self.anchor_x + self.PATROL_RADIUS
+
+        if self.state == "WALK_LEFT":
+            self.direction = -1
+            self.pos_x    -= self.MOVE_SPEED
+            if self.pos_x <= left_bound:
+                self.pos_x  = left_bound   # clamp — no overshoot
+                self.state  = "IDLE"
+                self.idle_timer = 0
+
+        elif self.state == "WALK_RIGHT":
+            self.direction = 1
+            self.pos_x    += self.MOVE_SPEED
+            if self.pos_x >= right_bound:
+                self.pos_x  = right_bound  # clamp
+                self.state  = "IDLE"
+                self.idle_timer = 0
+
+        elif self.state == "IDLE":
+            self.idle_timer += 1
+            if self.idle_timer >= self.IDLE_DURATION:
+                # Turn around: if we were going left, now go right — and vice versa
+                self.state = "WALK_RIGHT" if self.direction == -1 else "WALK_LEFT"
+
+        # ── Apply horizontal position ──────────────────────────────────
+        self.rect.x = round(self.pos_x)
+
+        # ── Wall collision (safety net) ────────────────────────────────
+        for _, tile_rect in world.tile_list:
+            if tile_rect.colliderect(self.rect):
+                if self.direction == -1:
+                    self.rect.left = tile_rect.right
+                else:
+                    self.rect.right = tile_rect.left
+                self.pos_x = float(self.rect.x)
+                # Flip state so it doesn't get stuck on a wall
+                self.state = "WALK_RIGHT" if self.direction == -1 else "WALK_LEFT"
+                break
+
+        # ── Gravity ───────────────────────────────────────────────────
+        self.vel_y     = min(self.vel_y + self.GRAVITY, self.MAX_FALL_SPEED)
+        self.rect.y   += self.vel_y
+        self.on_ground = False
 
         for _, tile_rect in world.tile_list:
             if tile_rect.colliderect(self.rect):
                 if self.vel_y > 0:
                     self.rect.bottom = tile_rect.top
-                elif self.vel_y < 0:
+                    self.vel_y       = 0
+                    self.on_ground   = True
+                else:
                     self.rect.top = tile_rect.bottom
-                self.vel_y = 0
+                    self.vel_y    = 0
+                break
 
-        self.timer += 1
-        if self.timer >= self.state_durations[self.state]:
-            self.timer = 0
-            self.state = "IDLE" if self.state == "WALKING" else "WALKING"
-
-        if self.state == "WALKING":
-            self.pos_x += self.MOVE_SPEED * self.direction
-            left  = self.center_x - self.PATROL_WIDTH / 2
-            right = self.center_x + self.PATROL_WIDTH / 2
-            if self.pos_x >= right:
-                self.pos_x, self.direction = right, -1
-            elif self.pos_x <= left:
-                self.pos_x, self.direction = left,  1
-
-        self.rect.x        = round(self.pos_x)   # FIX 7
+        # ── Hitbox ────────────────────────────────────────────────────
         self.hitbox.center = (self.rect.centerx, self.rect.centery + self.VISUAL_OFFSET_Y)
 
-        frames             = self.walk_frames if self.state == "WALKING" else self.idle_frames
+        # ── Animation ─────────────────────────────────────────────────
+        is_walking = self.state in ("WALK_LEFT", "WALK_RIGHT")
+        frames     = self.walk_frames if is_walking else self.idle_frames
         self.current_frame = (self.current_frame + self.ANIM_SPEED) % len(frames)
-        raw                = frames[int(self.current_frame)]
-        self.image         = pygame.transform.flip(raw, True, False) if self.direction == 1 else raw
+        raw_image  = frames[int(self.current_frame)]
+        # Default sprite faces left; flip when going right
+        self.image = pygame.transform.flip(raw_image, self.direction > 0, False)
 
+    # ------------------------------------------------------------------
     def draw(self, screen: pygame.Surface) -> None:
         screen.blit(self.image, (self.rect.x, self.rect.y + self.VISUAL_OFFSET_Y))
 
@@ -589,7 +1288,7 @@ class PixelFont:
                 return None
         return self._cache[char]
 
-    def render(self, text: str, screen: pygame.Surface, x: int, y: int) -> int:
+    def render(self, text: str, screen: pygame.Surface, x: int, y: int,color: tuple = None) -> int:
         cursor_x = x
         for char in text.upper():
             if char == ' ':
@@ -597,7 +1296,17 @@ class PixelFont:
                 continue
             glyph = self._get_glyph(char)
             if glyph:
-                screen.blit(glyph, (cursor_x, y))
+                if color:
+                    # Create a transparent SRCALPHA surface
+                    colored = pygame.Surface(
+                        (self.glyph_size, self.glyph_size), pygame.SRCALPHA)
+                    colored.fill((0, 0, 0, 0))          # fully transparent
+                    colored.blit(glyph, (0, 0))          # blit black glyph (colorkey drops white)
+                    colored.fill((*color, 0),             # add color to RGB, leave alpha alone
+                    special_flags=pygame.BLEND_RGBA_ADD)
+                    screen.blit(colored, (cursor_x, y))
+                else:
+                    screen.blit(glyph, (cursor_x, y))
                 cursor_x += self.glyph_size + self.spacing
         return cursor_x - x
 
@@ -691,7 +1400,188 @@ class _ButtonMenu:
                 self._click_time = pygame.time.get_ticks()
                 return i
         return None
+# =============================================================================
+# MENU BACKGROUND  — hacker/matrix vibe for the main menu
+# =============================================================================
 
+class MenuBackground:
+    MATRIX_CHARS = "アイウエオカキクケコ0123456789ABCDEF<>{}[]|\\/#@!?01{}()"
+
+    def __init__(self):
+        self._mfont   = pygame.font.SysFont("courier", 16, bold=True)
+        self._sfont   = pygame.font.SysFont("courier", 11, bold=False)
+
+        # Two layers: fast green + slow dim layer
+        col_count = SCREEN_WIDTH // 18
+        self.rain_a = [
+            {"x": i * 18,
+             "y": random.randint(-SCREEN_HEIGHT, 0),
+             "speed": random.randint(4, 9),
+             "length": random.randint(10, 24)}
+            for i in range(col_count)
+        ]
+        col_count2 = SCREEN_WIDTH // 30
+        self.rain_b = [
+            {"x": random.randint(0, SCREEN_WIDTH),
+             "y": random.randint(-SCREEN_HEIGHT, 0),
+             "speed": random.randint(1, 3),
+             "length": random.randint(6, 14)}
+            for i in range(col_count2)
+        ]
+
+        # Glitch
+        self.glitch_active   = False
+        self.glitch_timer    = 0
+        self.glitch_cooldown = 0
+        self.glitch_slices   = []
+
+        # Scanlines (built once)
+        self._scanlines = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        for sy in range(0, SCREEN_HEIGHT, 3):
+            pygame.draw.line(self._scanlines, (0, 0, 0, 60),
+                             (0, sy), (SCREEN_WIDTH, sy))
+
+        # Horizontal circuit lines
+        self._circuit_y = [random.randint(50, SCREEN_HEIGHT - 50)
+                           for _ in range(6)]
+        self._circuit_x = [random.randint(0, SCREEN_WIDTH)
+                           for _ in range(6)]
+
+        # Floating binary blobs
+        self._blobs = [
+            {"x": random.randint(0, SCREEN_WIDTH),
+             "y": random.randint(0, SCREEN_HEIGHT),
+             "text": "".join(random.choice("01") for _ in range(random.randint(6, 14))),
+             "alpha": random.randint(20, 60),
+             "speed": random.uniform(0.2, 0.8)}
+            for _ in range(18)
+        ]
+
+    # ------------------------------------------------------------------
+    def _trigger_glitch(self):
+        self.glitch_slices = [
+            (random.randint(0, SCREEN_HEIGHT - 30),
+             random.randint(2, 14),
+             random.randint(-20, 20),
+             random.choice([(0,255,100,25),(0,180,255,20),(255,255,0,15)]))
+            for _ in range(random.randint(2, 4))
+        ]
+        self.glitch_active   = True
+        self.glitch_timer    = random.randint(2, 6)
+        self.glitch_cooldown = random.randint(90, 300)
+
+    # ------------------------------------------------------------------
+    def update(self):
+        for col in self.rain_a:
+            col["y"] += col["speed"]
+            if col["y"] > SCREEN_HEIGHT + col["length"] * 18:
+                col["y"]      = random.randint(-300, -20)
+                col["speed"]  = random.randint(4, 9)
+                col["length"] = random.randint(10, 24)
+
+        for col in self.rain_b:
+            col["y"] += col["speed"]
+            if col["y"] > SCREEN_HEIGHT + col["length"] * 14:
+                col["y"]      = random.randint(-200, -10)
+                col["speed"]  = random.randint(1, 3)
+                col["length"] = random.randint(6, 14)
+
+        for blob in self._blobs:
+            blob["y"] += blob["speed"]
+            if blob["y"] > SCREEN_HEIGHT + 20:
+                blob["y"]    = random.randint(-40, 0)
+                blob["x"]    = random.randint(0, SCREEN_WIDTH)
+                blob["text"] = "".join(random.choice("01") for _ in
+                                       range(random.randint(6, 14)))
+
+        if self.glitch_cooldown > 0:
+            self.glitch_cooldown -= 1
+        elif random.random() < 0.015:
+            self._trigger_glitch()
+        if self.glitch_active:
+            self.glitch_timer -= 1
+            if self.glitch_timer <= 0:
+                self.glitch_active = False
+
+    # ------------------------------------------------------------------
+    def draw(self, screen: pygame.Surface):
+        screen.fill((4, 8, 4))
+
+        # ── Layer B — slow dim rain ───────────────────────────────────
+        for col in self.rain_b:
+            for i in range(col["length"]):
+                cy = col["y"] - i * 14
+                if cy < 0 or cy > SCREEN_HEIGHT:
+                    continue
+                ch   = random.choice(self.MATRIX_CHARS)
+                dark = max(15, 45 - i * 4)
+                surf = self._sfont.render(ch, True, (0, dark, 0))
+                surf.set_alpha(80)
+                screen.blit(surf, (col["x"], cy))
+
+        # ── Layer A — fast bright rain ────────────────────────────────
+        for col in self.rain_a:
+            for i in range(col["length"]):
+                cy = col["y"] - i * 18
+                if cy < 0 or cy > SCREEN_HEIGHT:
+                    continue
+                ch = random.choice(self.MATRIX_CHARS)
+                if i == 0:
+                    color = (180, 255, 180)
+                elif i < 3:
+                    color = (0, 210, 70)
+                else:
+                    color = (0, max(20, 100 - i * 6), 0)
+                screen.blit(self._mfont.render(ch, True, color), (col["x"], cy))
+
+        # ── Floating binary blobs ─────────────────────────────────────
+        for blob in self._blobs:
+            surf = self._sfont.render(blob["text"], True, (0, 160, 40))
+            surf.set_alpha(blob["alpha"])
+            screen.blit(surf, (blob["x"], blob["y"]))
+
+        # ── Horizontal circuit traces ─────────────────────────────────
+        now = pygame.time.get_ticks()
+        for i, cy in enumerate(self._circuit_y):
+            pulse = abs(((now // 12 + i * 120) % 400) - 200) / 200
+            alpha = int(20 + pulse * 35)
+            lsurf = pygame.Surface((SCREEN_WIDTH, 1), pygame.SRCALPHA)
+            lsurf.fill((0, 200, 60, alpha))
+            screen.blit(lsurf, (0, cy))
+            # Node dots along the line
+            for nx in range(0, SCREEN_WIDTH, 80):
+                dot_a = int(30 + pulse * 60)
+                pygame.draw.circle(screen, (0, 200, 60, dot_a),
+                                   (nx + (i * 23) % 80, cy), 2)
+
+        # ── Dark vignette overlay ─────────────────────────────────────
+        vign = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        vign.fill((0, 0, 0, 0))
+        for vy in range(0, SCREEN_HEIGHT // 3):
+            a = int(110 * (1 - vy / (SCREEN_HEIGHT // 3)))
+            pygame.draw.line(vign, (0, 0, 0, a), (0, vy), (SCREEN_WIDTH, vy))
+        for vy in range(SCREEN_HEIGHT * 2 // 3, SCREEN_HEIGHT):
+            a = int(110 * (vy - SCREEN_HEIGHT * 2 // 3) / (SCREEN_HEIGHT // 3))
+            pygame.draw.line(vign, (0, 0, 0, a), (0, vy), (SCREEN_WIDTH, vy))
+        screen.blit(vign, (0, 0))
+
+        # ── Glitch slices ─────────────────────────────────────────────
+        if self.glitch_active:
+            for (gy, gh, goff, gcol) in self.glitch_slices:
+                band = pygame.Surface((SCREEN_WIDTH, gh), pygame.SRCALPHA)
+                band.fill(gcol)
+                screen.blit(band, (0, gy))
+                safe_w = SCREEN_WIDTH - abs(goff)
+                if safe_w > 0 and gh > 0:
+                    try:
+                        sl = screen.subsurface(
+                            pygame.Rect(0, gy, safe_w, gh)).copy()
+                        screen.blit(sl, (goff, gy))
+                    except ValueError:
+                        pass
+
+        # ── Scanlines ────────────────────────────────────────────────
+        screen.blit(self._scanlines, (0, 0))
 
 # =============================================================================
 # MENU  (Language Selection)
@@ -748,8 +1638,12 @@ class Menu:
             self.GLYPH_SIZE + 16,
         )
 
-    def draw(self, screen: pygame.Surface, mouse_pos: tuple[int, int]) -> None:
-        screen.fill(DARK)
+    def draw(self, screen: pygame.Surface, mouse_pos: tuple[int, int],
+            bg: "MenuBackground" = None) -> None:
+        if bg:
+            bg.draw(screen)
+        else:
+            screen.fill(DARK)
 
         # Title
         title_text = "THE SYNTAX ESCAPE"
@@ -830,14 +1724,235 @@ class Menu:
 # =============================================================================
 # WIN MENU
 # =============================================================================
-
 class WinMenu(_ButtonMenu):
-    OPTIONS  = ["MAIN MENU", "RESTART", "NEXT LEVEL"]
-    BTN_Y    = 450
-    BTN_STEP = 60
+    OPTIONS    = ["NEXT LEVEL", "WORLD MAP", "MAIN MENU"]
+    ICON_FILES = ["NEXT_ICON.png", "MAP_ICON.png", "MAINMENU_ICON.png"]
+    BTN_Y      = 450
+    BTN_STEP   = 60
+    PANEL_W    = 580
+    PANEL_H    = 340
+    ICON_SIZE  = (88, 88)
+    SET_SIZE   = (34, 34)
+    SLOT_W     = 108
+    SLOT_H     = 108
+    SLOT_DY    = 195
+    HEADER_H   = 50
+    ICON_COLORS = [GOLD, CYAN, NEON_GREEN]
 
-    def draw(self, screen: pygame.Surface, mouse_pos: tuple[int, int]) -> None:
-        self._draw_buttons(screen, mouse_pos, hover_color=GOLD, flash_color=WHITE)
+    def __init__(self):
+        super().__init__(glyph_size=20)
+        self._bg    = self._load_img("GRAPHICS/UI/WIN_SETTINGS.png", (self.PANEL_W, self.PANEL_H))
+        self._icons = [self._load_icon(f"GRAPHICS/UI/ICONS/{f}", self.ICON_SIZE)for f in self.ICON_FILES]
+        self._small_font = PixelFont(18)
+
+    def _load_img(self, path, size):
+        try:
+            surf = pygame.transform.scale(
+                pygame.image.load(path).convert_alpha(), size)
+            surf.set_colorkey((255, 255, 255))
+            return surf
+        except FileNotFoundError:
+            return None
+
+    def _load_icon(self, path, size):
+        try:
+            return pygame.transform.scale(
+                pygame.image.load(path).convert_alpha(), size)
+        except FileNotFoundError:
+            return None
+
+    def _panel_topleft(self):
+        return (SCREEN_WIDTH  // 2 - self.PANEL_W // 2,
+                SCREEN_HEIGHT // 2 - self.PANEL_H // 2)
+
+    def _slot_rect(self, index):
+        px, py  = self._panel_topleft()
+        spacing = (self.PANEL_W - 3 * self.SLOT_W) // 4
+        sx = px + spacing + index * (self.SLOT_W + spacing)
+        sy = py + self.SLOT_DY
+        return pygame.Rect(sx, sy, self.SLOT_W, self.SLOT_H)
+
+    def draw(self, screen, mouse_pos):
+        px, py = self._panel_topleft()
+        if self._bg:
+            screen.blit(self._bg, (px, py))
+
+        now = pygame.time.get_ticks()
+        SLOT_LABELS = ["NEXT LEVEL", "WORLD MAP", "MAIN MENU"]
+
+        for i, label in enumerate(SLOT_LABELS):
+            rect        = self._slot_rect(i)
+            is_hovered  = rect.collidepoint(mouse_pos)
+            is_flashing = (i == self._click_idx and now - self._click_time < self.CLICK_FLASH_MS)
+
+            lw = self._small_font.text_width(label)
+            self._small_font.render(label, screen,rect.centerx - lw // 2, rect.top - 22)
+
+            if is_flashing:
+                glow = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+                glow.fill((255, 215, 0, 90))
+                screen.blit(glow, rect.topleft)
+                pygame.draw.rect(screen, WHITE, rect, 3)
+            elif is_hovered:
+                glow = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+                glow.fill((255, 255, 255, 40))
+                screen.blit(glow, rect.topleft)
+                pygame.draw.rect(screen, GOLD, rect, 3)
+
+            if self._icons[i]:
+                ico = self._icons[i]
+                screen.blit(ico, (rect.centerx - ico.get_width()  // 2,
+                                  rect.centery - ico.get_height() // 2))
+
+        label_txt = "YOU ESCAPED!"
+        lw = self.font.text_width(label_txt)
+        self.font.render(label_txt, screen,px + self.PANEL_W // 2 - lw // 2,py + (self.HEADER_H - self.font.glyph_size) // 2)
+
+    def handle_click(self, pos):
+        for i in range(len(self.OPTIONS)):
+            if self._slot_rect(i).collidepoint(pos):
+                self._click_idx  = i
+                self._click_time = pygame.time.get_ticks()
+                return i
+        return None
+
+
+# =============================================================================
+# GAME OVER SCREEN
+# =============================================================================
+
+class GameOverScreen:
+    PANEL_W        = 580
+    PANEL_H        = 340
+    HEADER_H       = 50
+    SLOT_W         = 108
+    SLOT_H         = 108
+    SLOT_DY        = 195
+    ICON_SIZE      = (72, 72)
+    CLICK_FLASH_MS = 150
+
+    def __init__(self):
+        self.font        = PixelFont(22)
+        self.small_font  = PixelFont(16)
+        self._bg         = self._load_img("GRAPHICS/UI/GAMEOVER.png",         (self.PANEL_W, self.PANEL_H))
+        self._map_ico    = self._load_icon("GRAPHICS/UI/ICONS/MAP_ICON.png",   self.ICON_SIZE)
+        self._retry_ico  = self._load_icon("GRAPHICS/UI/ICONS/RESTART_ICON.png",  self.ICON_SIZE)
+        self._menu_ico   = self._load_icon("GRAPHICS/UI/ICONS/MAINMENU_ICON.png", self.ICON_SIZE)
+        # Public stats – updated by main() each frame before draw()
+        self.elapsed_secs : int       = 0
+        self.deaths       : int       = 0
+        self.score        : int       = 0
+        self._click_idx   : int|None  = None
+        self._click_time  : int       = 0
+
+    # ------------------------------------------------------------------
+    def _load_img(self, path: str, size: tuple) -> pygame.Surface | None:
+        """For panel backgrounds — strips white background."""
+        try:
+            surf = pygame.transform.scale(
+                pygame.image.load(path).convert_alpha(), size)
+            surf.set_colorkey((255, 255, 255))
+            return surf
+        except FileNotFoundError:
+            return None
+
+    def _load_icon(self, path: str, size: tuple) -> pygame.Surface | None:
+        """For icons — preserves all pixels including white."""
+        try:
+            return pygame.transform.scale(
+                pygame.image.load(path).convert_alpha(), size)
+        except FileNotFoundError:
+            return None
+
+    def _panel_topleft(self) -> tuple[int, int]:
+        return (SCREEN_WIDTH  // 2 - self.PANEL_W // 2,
+                SCREEN_HEIGHT // 2 - self.PANEL_H // 2)
+
+    def _slot_rect(self, index: int) -> pygame.Rect:
+        px, py  = self._panel_topleft()
+        spacing = (self.PANEL_W - 3 * self.SLOT_W) // 4
+        sx = px + spacing + index * (self.SLOT_W + spacing)
+        sy = py + self.SLOT_DY
+        return pygame.Rect(sx, sy, self.SLOT_W, self.SLOT_H)
+
+    # ------------------------------------------------------------------
+    def draw(self, screen: pygame.Surface, mouse_pos: tuple[int, int] = (0, 0)) -> None:
+        px, py = self._panel_topleft()
+
+        # Dark veil so the game world recedes
+        veil = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        veil.fill((0, 0, 0, 160))
+        screen.blit(veil, (0, 0))
+
+        # Panel background
+        if self._bg:
+            screen.blit(self._bg, (px, py))
+        else:
+            pygame.draw.rect(screen, (15, 15, 40), (px, py, self.PANEL_W, self.PANEL_H))
+            pygame.draw.rect(screen, (60, 60, 120), (px, py, self.PANEL_W, self.PANEL_H), 2)
+
+        # "GAME OVER" — perfectly centred in the full header bar
+        title = "GAME OVER"
+        tw    = self.font.text_width(title)
+        ty    = py + (self.HEADER_H - self.font.glyph_size) // 2
+        self.font.render(title, screen, px + self.PANEL_W // 2 - tw // 2, ty)
+
+        # Separator line beneath the header bar
+        pygame.draw.line(screen, (80, 80, 140),(px + 4,py + self.HEADER_H),(px + self.PANEL_W - 4, py + self.HEADER_H), 2)
+
+        # --- Three slots: RETRY | DEATHS | MAIN MENU ---
+        SLOT_DATA = [
+        ("RETRY",     self._retry_ico, True),
+        ("WORLD MAP", self._map_ico,   True),
+        ("MAIN MENU", self._menu_ico,  True),
+        ]
+
+        now = pygame.time.get_ticks()
+
+        for i, (label, icon, clickable) in enumerate(SLOT_DATA):
+            rect = self._slot_rect(i)
+
+            # Label above the slot
+            lw = self.small_font.text_width(label)
+            self.small_font.render(label, screen,rect.centerx - lw // 2,rect.top - 22)
+
+            # Hover / flash only on clickable slots
+            if clickable:
+                is_hovered  = rect.collidepoint(mouse_pos)
+                is_flashing = (i == self._click_idx and now - self._click_time < self.CLICK_FLASH_MS)
+                if is_flashing:
+                    glow = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+                    glow.fill((255, 215, 0, 90))
+                    screen.blit(glow, rect.topleft)
+                    pygame.draw.rect(screen, WHITE, rect, 3)
+                elif is_hovered:
+                    glow = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+                    glow.fill((255, 255, 255, 40))
+                    screen.blit(glow, rect.topleft)
+                    pygame.draw.rect(screen, GOLD, rect, 3)
+
+            # Draw icon centred inside the square slot (no circles)
+            if icon:
+                ix = rect.centerx - icon.get_width()  // 2
+                iy = rect.centery - icon.get_height() // 2
+                screen.blit(icon, (ix, iy))
+            elif i == 1:
+                # Fallback: draw deaths number if no icon loaded
+                val = str(self.deaths)
+                vw  = self.font.text_width(val)
+                self.font.render(val, screen,
+                                 rect.centerx - vw // 2,
+                                 rect.centery - self.font.glyph_size // 2)
+
+    # ------------------------------------------------------------------
+    def handle_click(self, pos: tuple[int, int]) -> int | None:
+        """Returns 0 = RETRY, 2 = MAIN MENU, None = nothing hit."""
+        for i, clickable in enumerate([True, True, True]):
+            if clickable and self._slot_rect(i).collidepoint(pos):
+                self._click_idx  = i
+                self._click_time = pygame.time.get_ticks()
+                return i
+        return None
 
 
 # =============================================================================
@@ -848,31 +1963,298 @@ class PauseMenu(_ButtonMenu):
     OPTIONS  = ["CONTINUE", "MAIN MENU", "RESET"]
     BTN_Y    = 400
     BTN_STEP = 60
+    PANEL_W  = 420
+    PANEL_H  = 520
+    ROW_H    = 93
+    ROW_Y0   = 55
+    BTN_H    = 60
+
+    def __init__(self):
+        super().__init__(glyph_size=24)
+        self._bg         = self._load_img("GRAPHICS/UI/SETTINGS.png", (self.PANEL_W, self.PANEL_H))
+        self._set_ico    = self._load_img("GRAPHICS/UI/ICONS/SETTINGS_ICON.png", (28, 28))
+        self._exit_ico   = self._load_img("GRAPHICS/UI/ICONS/EXIT_ICON.png", (28, 28))
+        self._vol_on_ico = self._load_img("GRAPHICS/UI/ICONS/VOLUMEON_ICON.png", (36, 36))
+        self._vol_off_ico= self._load_img("GRAPHICS/UI/ICONS/VOLUMEOFF_ICON.png", (36, 36))
+        self._map_ico    = self._load_img("GRAPHICS/UI/ICONS/MAP_ICON.png", (36, 36))
+        self.volume_on   = True
+        
+
+    def _load_img(self, path: str, size: tuple) -> pygame.Surface | None:
+        try:
+            return pygame.transform.scale(pygame.image.load(path).convert_alpha(), size)
+        except FileNotFoundError:
+            return None
+
+    def _panel_topleft(self) -> tuple[int, int]:
+        return (SCREEN_WIDTH // 2 - self.PANEL_W // 2, SCREEN_HEIGHT // 2 - self.PANEL_H // 2)
+
+    def _row_rect(self, index: int) -> pygame.Rect:
+        px, py = self._panel_topleft()
+        row_top = py + self.ROW_Y0 + index * self.ROW_H
+        btn_top = row_top + (self.ROW_H - self.BTN_H) // 2
+        return pygame.Rect(px + 25, btn_top, self.PANEL_W - 50, self.BTN_H)
+
+    def _settings_rect(self) -> pygame.Rect:
+        px, py = self._panel_topleft()
+        return pygame.Rect(px + 10, py + (self.ROW_Y0 - 28) // 2, 28, 28)
+
+    def _exit_rect(self) -> pygame.Rect:
+        px, py = self._panel_topleft()
+        # Perfectly centred vertically in the header, flush to right with 8px margin
+        return pygame.Rect(px + self.PANEL_W - 36, py + (self.ROW_Y0 - 28) // 2, 28, 28)
 
     def draw(self, screen: pygame.Surface, mouse_pos: tuple[int, int]) -> None:
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
-        screen.blit(overlay, (0, 0))
+        # Dark veil
+        veil = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        veil.fill((0, 0, 0, 210))
+        screen.blit(veil, (0, 0))
 
-        # FIX: "PAUSED" properly centred (was hardcoded x=450)
+        px, py = self._panel_topleft()
+        if self._bg:
+            screen.blit(self._bg, (px, py))
+
+        now = pygame.time.get_ticks()
+
+        # "PAUSED" perfectly centered
         label = "PAUSED"
-        pw    = self.font.text_width(label)
-        self.font.render(label, screen, SCREEN_WIDTH // 2 - pw // 2, 250)
+        lw = self.font.text_width(label)
+        self.font.render(label, screen, SCREEN_WIDTH // 2 - lw // 2, py + (self.ROW_Y0 - self.font.glyph_size) // 2 + 5)
 
-        self._draw_buttons(screen, mouse_pos, hover_color=GREEN, flash_color=WHITE)
+        # Exit X
+        exit_rect = self._exit_rect()
+        exit_hovered = exit_rect.collidepoint(mouse_pos)
+        if self._exit_ico:
+            if exit_hovered:
+                tinted = self._exit_ico.copy()
+                tinted.fill((255, 100, 100, 100), special_flags=pygame.BLEND_RGBA_ADD)
+                screen.blit(tinted, exit_rect.topleft)
+                pygame.draw.rect(screen, (255, 50, 50), exit_rect, 2)
+            else:
+                screen.blit(self._exit_ico, exit_rect.topleft)
+        else:
+            pygame.draw.line(screen, WHITE, exit_rect.topleft, exit_rect.bottomright, 3)
+            pygame.draw.line(screen, WHITE, exit_rect.topright, exit_rect.bottomleft, 3)
 
+        # Separator
+        sep_y = py + self.ROW_Y0 - 2
+        pygame.draw.line(screen, (100, 100, 180), (px + 8, sep_y), (px + self.PANEL_W - 8, sep_y), 2)
+
+        # === 3 ACTION BUTTONS ===
+        for i, option in enumerate(self.OPTIONS):
+            rect = self._row_rect(i)
+            is_hovered = rect.collidepoint(mouse_pos)
+            is_flashing = (i == self._click_idx and now - self._click_time < self.CLICK_FLASH_MS)
+
+            if is_flashing:
+                flash_surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+                flash_surf.fill((255, 255, 255, 70))
+                screen.blit(flash_surf, rect.topleft)
+                pygame.draw.rect(screen, WHITE, rect, 3)
+            elif is_hovered:
+                pygame.draw.rect(screen, GREEN, rect, 3)
+
+            # PERFECT CENTER TEXT
+            tw = self.font.text_width(option)
+            tx = SCREEN_WIDTH // 2 - tw // 2
+            base_ty = rect.centery - self.font.glyph_size // 2
+            if i == 0:              # CONTINUE
+                ty = base_ty + 16   # Lower 4px (change -4 to +4 to raise)
+            elif i == 1:            # MAIN MENU (optional)
+                ty = base_ty + 10    # Raise 2px (optional)
+            else:                   # RESET
+                ty = base_ty + 4     # No change
+            self.font.render(option, screen, tx, ty)
+
+        # === VOLUME ROW ===
+        vol_rect = self._row_rect(3)
+        vol_hovered = vol_rect.collidepoint(mouse_pos)
+        vol_ico = self._vol_on_ico if self.volume_on else self._vol_off_ico
+        vol_label = "SOUND ON" if self.volume_on else "SOUND OFF"
+        map_rect    = self._row_rect(4)
+        map_hovered = map_rect.collidepoint(mouse_pos)
+
+
+        if vol_hovered:
+            col = NEON_GREEN if self.volume_on else (200, 60, 60)
+            pygame.draw.rect(screen, col, vol_rect, 3)
+
+        if vol_ico:
+            ix = vol_rect.x + 55
+            iy = vol_rect.centery - vol_ico.get_height() // 2 - 5
+            screen.blit(vol_ico, (ix, iy))
+            lx = ix + vol_ico.get_width() + 5
+            ly = vol_rect.centery - self.font.glyph_size // 2 - 4
+            self.font.render(vol_label, screen, lx, ly)
+            
+        if map_hovered:
+            pygame.draw.rect(screen, CYAN, map_rect, 3)
+            
+        if self._map_ico:
+            ix = map_rect.x + 55
+            iy = map_rect.centery - self._map_ico.get_height() // 2 - 5
+            screen.blit(self._map_ico, (ix, iy))
+            lx = ix + self._map_ico.get_width() + 5
+            ly = map_rect.centery - self.font.glyph_size // 2 - 4
+            self.font.render("WORLD MAP", screen, lx, ly)
+
+
+    def handle_click(self, pos: tuple[int, int]) -> int | None:
+        # World map row  ← ADD AT THE TOP
+        if self._row_rect(4).collidepoint(pos):
+            return 4
+
+        # Exit X = close menu
+        if self._exit_rect().collidepoint(pos):
+            return 0  # CONTINUE (close menu)
+
+        # Volume toggle
+        if self._row_rect(3).collidepoint(pos):
+            self.volume_on = not self.volume_on
+            try:
+                pygame.mixer.music.set_volume(1.0 if self.volume_on else 0.0)
+                pygame.mixer.set_num_channels(8 if self.volume_on else 0)
+            except:
+                pass
+            return None
+
+        # Action buttons
+        for i in range(len(self.OPTIONS)):
+            if self._row_rect(i).collidepoint(pos):
+                self._click_idx = i
+                self._click_time = pygame.time.get_ticks()
+                return i
+        return None
+# =============================================================================
+# PARTICLE SYSTEM  ✨
+# =============================================================================
+
+class Particle(pygame.sprite.Sprite):
+    """Individual particle with physics, color fade, and gravity."""
+    
+    def __init__(self, x: float, y: float, vel_x: float, vel_y: float, color: tuple, lifetime: int, size: int = 4):
+        super().__init__()
+        self.pos_x   = x
+        self.pos_y   = y
+        self.vel_x   = vel_x
+        self.vel_y   = vel_y
+        self.color   = list(color)
+        self.lifetime = lifetime
+        self.age     = 0
+        self.size    = size
+        self.gravity = 0.15
+        self.friction = 0.98
+        
+        # Initial size variation
+        self.max_size = size + 2
+        self.image = self._create_image()
+        self.rect  = self.image.get_rect(center=(round(x), round(y)))
+    
+    def _create_image(self) -> pygame.Surface:
+        surf = pygame.Surface((self.max_size, self.max_size), pygame.SRCALPHA)
+        alpha = max(50, 255 * (1 - self.age / self.lifetime))
+        pygame.draw.circle(surf, (*self.color, int(alpha)),(self.max_size//2, self.max_size//2), self.size)
+        return surf
+    
+    def update(self):
+        self.age += 1
+        if self.age > self.lifetime:
+            self.kill()
+            return
+        
+        # Physics
+        self.vel_y += self.gravity
+        self.vel_x *= self.friction
+        self.vel_y *= self.friction
+        
+        self.pos_x += self.vel_x
+        self.pos_y += self.vel_y
+        
+        # Fade color
+        fade = self.age / self.lifetime
+        self.color[0] = int(self.color[0] * (1 - fade * 0.5))
+        self.color[1] = int(self.color[1] * (1 - fade * 0.5))
+        self.color[2] = int(self.color[2] * (1 - fade * 0.5))
+        
+        # Shrink
+        self.size = max(1, self.max_size - int(fade * self.max_size))
+        
+        # Update visual
+        self.image = self._create_image()
+        self.rect.center = (round(self.pos_x), round(self.pos_y))
+
+class ParticleManager:
+    """Manages particle pools for performance."""
+    
+    def __init__(self, max_particles: int = 300):
+        self.particles = pygame.sprite.Group()
+        self.max_particles = max_particles
+        self.pool = []
+        self.next_id = 0
+    
+    def emit(self, x: float, y: float, count: int = 8, **kwargs):
+        """Spawn particles at position with random variation."""
+        for _ in range(count):
+            if len(self.particles) >= self.max_particles:
+                break
+                
+            # Random variation
+            vel_spread = kwargs.get('vel_spread', 4)
+            vel_x = (self.next_id * 0.3) % vel_spread - vel_spread/2
+            vel_y = -(self.next_id * 0.2) % (vel_spread * 0.7)
+            
+            color = kwargs.get('color', (255, 255, 100))
+            lifetime = kwargs.get('lifetime', 40)
+            size = kwargs.get('size', 4)
+            
+            particle = Particle(x, y, vel_x, vel_y, color, lifetime, size)
+            self.particles.add(particle)
+            self.next_id += 1
+    
+    def emit_land(self, x: float, y: float):
+        """Landing dust effect."""
+        self.emit(x, y, count=6, vel_spread=2, color=(200, 180, 120), lifetime=30, size=3)
+    
+    def emit_jump(self, x: float, y: float):
+        """Jump puff."""
+        self.emit(x, y, count=5, vel_spread=3, color=(120, 180, 255), lifetime=25, size=2)
+    
+    def emit_death(self, x: float, y: float):
+        """Player death explosion."""
+        for i in range(20):
+            angle = i * 0.3
+            vel_x = 6 * pygame.math.Vector2(1, 0).rotate(angle*180/3.14).x
+            vel_y = 6 * pygame.math.Vector2(1, 0).rotate(angle*180/3.14).y
+            color = [(255, 100, 100), (255, 150, 100), (255, 255, 100)][i%3]
+            p = Particle(x, y, vel_x, vel_y, color, 60, 6)
+            self.particles.add(p)
+    
+    def emit_slime(self, x: float, y: float):
+        """Slime squish effect."""
+        self.emit(x, y+20, count=12, vel_spread=3, color=(100, 255, 150), lifetime=35, size=3)
+    
+    def emit_gate(self, x: float, y: float):
+        """Gate opening sparkles."""
+        self.emit(x+40, y+20, count=15, vel_spread=2, color=(0, 255, 255), lifetime=45, size=2)
+    
+    def update(self):
+        self.particles.update()
+    
+    def draw(self, screen: pygame.Surface):
+        self.particles.draw(screen)
 
 # =============================================================================
 # GAME HELPERS
 # =============================================================================
 
-def spawn_slimes(slime_group: pygame.sprite.Group) -> None:
+def spawn_slimes(slime_group: pygame.sprite.Group, world_data) -> None:
+    """Spawn slimes based on current world data."""
     slime_group.empty()
-    for x, y in SLIME_SPAWN_POSITIONS:
+    spawn_positions = get_slime_spawn_positions(world_data)
+    for x, y in spawn_positions:
         slime_group.add(Enemy(x, y))
-
-
-def reset_game(player: Player, slime_group: pygame.sprite.Group, world) -> None:
+        
+def reset_game(player: Player, slime_group: pygame.sprite.Group, world, world_data) -> None:
     player.pos_x            = -5.0
     player.pos_y            = float(SCREEN_HEIGHT - 350)
     player.rect.x           = -5
@@ -888,13 +2270,254 @@ def reset_game(player: Player, slime_group: pygame.sprite.Group, world) -> None:
     player.frame_index      = 0.0
     player.respawn_time     = pygame.time.get_ticks()
     player.last_action_time = pygame.time.get_ticks()
-
-    spawn_slimes(slime_group)
-
+    player.quiz_trigger_slime = None
+    spawn_slimes(slime_group, world_data)
     for gate in world.gate_group:
         gate.reset()
 
+def full_reset_game(player: Player, slime_group: pygame.sprite.Group,world, world_data) -> None:
+    """Full reset — also resets HP. Use on retry/main menu."""
+    reset_game(player, slime_group, world, world_data)
+    player.hp = MAX_HP
 
+# =============================================================================
+# QUIZ POPUP  — terminal-style syntax challenge
+# =============================================================================
+
+class QuizPopup:
+    PANEL_W  = 720
+    PANEL_H  = 420
+    FLASH_MS = 800   # how long correct/wrong feedback shows
+
+    OPTION_LABELS = ["A", "B", "C", "D"]
+    TERM_COLOR    = (0, 255, 100)      # matrix green
+    WRONG_COLOR   = (255, 60,  60)
+    RIGHT_COLOR   = (0,  255, 100)
+    BG_COLOR      = (5,  12,  5)
+    BORDER_COLOR  = (0,  180, 60)
+
+    def __init__(self, language: str):
+        self.language  = language
+        self.questions = QUIZ_QUESTIONS.get(language, []).copy()
+        random.shuffle(self.questions)
+        self._q_index  = 0
+        self._current  = self.questions[0] if self.questions else None
+
+        self._sysfont  = pygame.font.SysFont("courier", 18, bold=True)
+        self._qtfont   = pygame.font.SysFont("courier", 17, bold=True)
+        self._smfont   = pygame.font.SysFont("courier", 15, bold=True)
+
+        # Feedback state
+        self._feedback      = None   # None | "correct" | "wrong"
+        self._feedback_time = 0
+        self._blink         = True
+        self._blink_timer   = 0
+
+        # Click flash per option
+        self._click_opt  = None
+        self._click_time = 0
+
+        self.result      = None  # set to "correct" / "wrong" after feedback shown
+        self.done        = False
+
+    # ------------------------------------------------------------------
+    def _panel_rect(self):
+        return pygame.Rect(
+            SCREEN_WIDTH  // 2 - self.PANEL_W // 2,
+            SCREEN_HEIGHT // 2 - self.PANEL_H // 2,
+            self.PANEL_W, self.PANEL_H)
+
+    def _option_rect(self, i):
+        pr = self._panel_rect()
+        w  = (self.PANEL_W - 60) // 2
+        h  = 52
+        col = i % 2
+        row = i // 2
+        x = pr.x + 20 + col * (w + 20)
+        y = pr.y + 220 + row * (h + 12)
+        return pygame.Rect(x, y, w, h)
+
+    # ------------------------------------------------------------------
+    def handle_click(self, pos):
+        if self._feedback is not None:
+            return
+        if self._current is None:
+            return
+        for i in range(4):
+            if self._option_rect(i).collidepoint(pos):
+                self._click_opt  = i
+                self._click_time = pygame.time.get_ticks()
+                if i == self._current["answer"]:
+                    self._feedback      = "correct"
+                else:
+                    self._feedback      = "wrong"
+                self._feedback_time = pygame.time.get_ticks()
+                break
+
+    # ------------------------------------------------------------------
+    def update(self):
+        now = pygame.time.get_ticks()
+
+        # Blink cursor
+        self._blink_timer += 1
+        if self._blink_timer > 20:
+            self._blink       = not self._blink
+            self._blink_timer = 0
+
+        # Check if feedback period is over → signal done
+        if self._feedback is not None:
+            if now - self._feedback_time > self.FLASH_MS:
+                self.result = self._feedback
+                self.done   = True
+
+    # ------------------------------------------------------------------
+    def _wrap_text(self, font, text, max_w):
+        """Simple word-wrap returning list of strings."""
+        words  = text.split()
+        lines  = []
+        line   = ""
+        for w in words:
+            test = line + (" " if line else "") + w
+            if font.size(test)[0] <= max_w:
+                line = test
+            else:
+                if line:
+                    lines.append(line)
+                line = w
+        if line:
+            lines.append(line)
+        return lines
+
+    # ------------------------------------------------------------------
+    def draw(self, screen: pygame.Surface, mouse_pos: tuple):
+        if self._current is None:
+            return
+
+        now = pygame.time.get_ticks()
+        pr  = self._panel_rect()
+
+        # ── Veil ─────────────────────────────────────────────────────
+        veil = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        veil.fill((0, 0, 0, 190))
+        screen.blit(veil, (0, 0))
+
+        # ── Panel background ─────────────────────────────────────────
+        pygame.draw.rect(screen, self.BG_COLOR,    pr)
+        pygame.draw.rect(screen, self.BORDER_COLOR, pr, 3)
+
+        # ── Scanlines ────────────────────────────────────────────────
+        for sy in range(pr.y, pr.y + pr.h, 4):
+            pygame.draw.line(screen, (0, 30, 0),(pr.x, sy), (pr.x + pr.w, sy))
+
+        # ── Header bar ───────────────────────────────────────────────
+        hdr_h = 44
+        hdr   = pygame.Rect(pr.x, pr.y, pr.w, hdr_h)
+        pygame.draw.rect(screen, (0, 40, 15), hdr)
+        pygame.draw.line(screen, self.BORDER_COLOR,(pr.x, pr.y + hdr_h), (pr.x + pr.w, pr.y + hdr_h), 2)
+
+        cursor_ch = "|" if self._blink else " "
+        title_str = f"[ SYNTAX TERMINAL — {self.language.upper()} ]{cursor_ch}"
+        title_surf = self._sysfont.render(title_str, True, self.TERM_COLOR)
+        screen.blit(title_surf,(pr.x + pr.w // 2 - title_surf.get_width() // 2,pr.y + hdr_h // 2 - title_surf.get_height() // 2))
+
+        # ── Prompt line ──────────────────────────────────────────────
+        prompt = self._smfont.render(
+            f"> SELECT THE CORRECT SYNTAX ANSWER:", True, (0, 180, 60))
+        screen.blit(prompt, (pr.x + 20, pr.y + hdr_h + 10))
+
+        # ── Question text (wrapped) ───────────────────────────────────
+        q_lines = self._wrap_text(self._qtfont, self._current["q"], pr.w - 40)
+        for li, line in enumerate(q_lines):
+            surf = self._qtfont.render(line, True, (200, 255, 200))
+            screen.blit(surf, (pr.x + 20, pr.y + hdr_h + 38 + li * 22))
+
+        # ── Option buttons ───────────────────────────────────────────
+        for i, opt_text in enumerate(self._current["options"]):
+            rect     = self._option_rect(i)
+            hovered  = rect.collidepoint(mouse_pos)
+            flashing = (self._click_opt == i and
+                        now - self._click_time < 120)
+            is_answer = (i == self._current["answer"])
+
+            # Background
+            if self._feedback == "correct" and is_answer:
+                bg = (0, 60, 20)
+                bc = self.RIGHT_COLOR
+            elif self._feedback == "wrong" and i == self._click_opt:
+                bg = (60, 0, 0)
+                bc = self.WRONG_COLOR
+            elif flashing:
+                bg = (0, 50, 20)
+                bc = WHITE
+            elif hovered and self._feedback is None:
+                bg = (0, 40, 15)
+                bc = self.TERM_COLOR
+            else:
+                bg = (10, 20, 10)
+                bc = (0, 120, 40)
+
+            pygame.draw.rect(screen, bg, rect)
+            pygame.draw.rect(screen, bc, rect, 2)
+
+            # Corner brackets
+            blen = 7
+            for sx, sy, dx, dy in [
+                (-1,-1,1,0),(-1,-1,0,1),(1,-1,-1,0),(1,-1,0,1),
+                (-1,1,1,0), (-1,1,0,-1),(1,1,-1,0), (1,1,0,-1),
+            ]:
+                ox = rect.centerx + sx*(rect.w//2)
+                oy = rect.centery + sy*(rect.h//2)
+                pygame.draw.line(screen, bc,(ox, oy), (ox+dx*blen, oy+dy*blen), 1)
+
+            # Label + text
+            label = self.OPTION_LABELS[i]
+            lbl_s = self._sysfont.render(f"[{label}]", True, bc)
+            screen.blit(lbl_s, (rect.x + 8, rect.centery - lbl_s.get_height()//2))
+
+            # Wrap option text if needed
+            opt_lines = self._wrap_text(
+                self._smfont, opt_text, rect.w - lbl_s.get_width() - 24)
+            for li2, ol in enumerate(opt_lines[:2]):
+                os = self._smfont.render(ol, True, (180, 255, 180))
+                screen.blit(os, (rect.x + lbl_s.get_width() + 16,rect.centery - (len(opt_lines[:2])*17)//2+ li2 * 17))
+
+        # ── Feedback overlay ─────────────────────────────────────────
+        if self._feedback is not None:
+            fade = min(1.0, (now - self._feedback_time) / 200)
+            if self._feedback == "correct":
+                msg   = ">> CORRECT! SLIME ELIMINATED <<"
+                color = self.RIGHT_COLOR
+            else:
+                msg   = ">> WRONG! -1 HP <<"
+                color = self.WRONG_COLOR
+
+            fb_surf = self._sysfont.render(msg, True, color)
+            fx = pr.x + pr.w // 2 - fb_surf.get_width()  // 2
+            fy = pr.y + pr.h - 38
+            # Glow box
+            glow = pygame.Surface((fb_surf.get_width()+24, fb_surf.get_height()+12),pygame.SRCALPHA)
+            glow.fill((*color[:3], 40))
+            screen.blit(glow, (fx - 12, fy - 6))
+            screen.blit(fb_surf, (fx, fy))
+            
+            
+def draw_hp_bar(screen: pygame.Surface, player, font: PixelFont):
+    """Pixel-art HP bar drawn in top-left during gameplay."""
+    bar_x, bar_y = 20, 20
+    pip_w, pip_h = 28, 14
+    gap          = 5
+    label_w      = font.text_width("HP")
+    font.render("HP", screen, bar_x, bar_y + 1)
+
+    for i in range(player.max_hp):
+        px = bar_x + label_w + 8 + i * (pip_w + gap)
+        rect = pygame.Rect(px, bar_y, pip_w, pip_h)
+        if i < player.hp:
+            pygame.draw.rect(screen, (0, 220, 80), rect)
+            pygame.draw.rect(screen, (0, 255, 100), rect, 1)
+        else:
+            pygame.draw.rect(screen, (20, 40, 20), rect)
+            pygame.draw.rect(screen, (0, 80, 30), rect, 1)          
 # =============================================================================
 # MAIN
 # =============================================================================
@@ -907,23 +2530,30 @@ def main() -> None:
     pygame.mouse.set_visible(False)
     clock = pygame.time.Clock()
 
-    bg_manager  = BackgroundManager()
-    menu        = Menu()
-    player      = Player(-5, SCREEN_HEIGHT - 350)
+    bg_manager       = BackgroundManager()
+    menu             = Menu()
+    menu_bg = MenuBackground()
+    player           = Player(-5, SCREEN_HEIGHT - 350)
     player.respawn_time = pygame.time.get_ticks()
-    slime_group = pygame.sprite.Group()
-    world       = None
-    game_over   = 0
-    game_state  = MENU
+    slime_group      = pygame.sprite.Group()
+    world            = None
+    game_over        = 0
+    game_state       = MENU
     selected_language = None
-    selected_level    = 1
-    win_menu    = None
-    pause_menu  = PauseMenu()
-    paused      = False
-    needs_reset = False
+    selected_level   = 1
+    win_menu         = None
+    pause_menu       = PauseMenu()
+    world_map_screen = WorldMapScreen(total_levels=len(WORLD_DATA_LEVELS))
+    paused           = False
+    needs_reset      = False
+    highest_unlocked = 1
+    quiz_popup   : QuizPopup | None = None
+    hud_font     = PixelFont(16)
 
-    game_over_font = pygame.font.SysFont("Arial", 40)
-    win_font       = pygame.font.SysFont("Arial", 60)
+    game_over_screen = GameOverScreen()
+
+    game_start_time : int | None = None
+    deaths_count    : int        = 0
 
     running = True
     while running:
@@ -936,60 +2566,192 @@ def main() -> None:
             if event.type == pygame.QUIT:
                 running = False
 
+            # --- MAIN MENU ---
             if game_state == MENU and event.type == pygame.MOUSEBUTTONDOWN:
                 chosen = menu.handle_click(pygame.mouse.get_pos())
                 if chosen:
                     selected_language = chosen
                     slime_group.empty()
-                    world      = World(WORLD_DATA, selected_level, slime_group)
+                    world      = World(WORLD_DATA_LEVELS[selected_level - 1],selected_level, slime_group)
                     game_state = PLAYING
                     pygame.mouse.set_visible(True)
                     if needs_reset:
-                        reset_game(player, slime_group, world)
+                        reset_game(player, slime_group, world,WORLD_DATA_LEVELS[selected_level - 1])
                         needs_reset = False
-                    print(f"Started {selected_language} – Level {selected_level}")
+                    game_start_time = pygame.time.get_ticks()
+                    deaths_count    = 0
 
+            # --- WORLD MAP ---
+            elif game_state == WORLD_MAP and event.type == pygame.MOUSEBUTTONDOWN:
+                wm_choice = world_map_screen.handle_click(
+                    pygame.mouse.get_pos(), highest_unlocked)
+                if wm_choice == 0:           # Back → main menu
+                    game_state = MENU
+                    pygame.mouse.set_visible(False)
+                elif wm_choice is not None:  # Level node clicked
+                    selected_level = wm_choice
+                    slime_group.empty()
+                    world = World(WORLD_DATA_LEVELS[selected_level - 1],selected_level, slime_group)
+                    reset_game(player, slime_group, world,WORLD_DATA_LEVELS[selected_level - 1])
+                    game_state      = PLAYING
+                    game_over       = 0
+                    game_start_time = pygame.time.get_ticks()
+                    deaths_count    = 0
+                    pygame.mouse.set_visible(True)
+                    
+            # --- QUIZ POPUP ---
+            elif game_state == QUIZ and event.type == pygame.MOUSEBUTTONDOWN:
+                if game_over == -1:
+                    # Game over clicks while quiz was open
+                    go_choice = game_over_screen.handle_click(pygame.mouse.get_pos())
+                    if go_choice == 0:   # RETRY
+                        game_over       = 0
+                        deaths_count   += 1
+                        game_start_time = pygame.time.get_ticks()
+                        quiz_popup      = None
+                        game_state      = PLAYING
+                        full_reset_game(player, slime_group, world,
+                                        WORLD_DATA_LEVELS[selected_level - 1])
+                    elif go_choice == 2:  # MAIN MENU
+                        game_state = MENU
+                        game_over  = 0
+                        quiz_popup = None
+                        pygame.mouse.set_visible(False)
+                elif quiz_popup:
+                    quiz_popup.handle_click(pygame.mouse.get_pos())
+                    
+                    
+                    
+                    
+
+            # --- PLAYING / WIN / PAUSED ---
             elif game_state in (PLAYING, WIN) or paused:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE and game_state == PLAYING:
                         paused = not paused
                     elif event.key == pygame.K_r and game_over == -1:
-                        game_over = 0
-                        reset_game(player, slime_group, world)
+                        game_over       = 0
+                        deaths_count   += 1
+                        game_start_time = pygame.time.get_ticks()
+                        reset_game(player, slime_group, world,WORLD_DATA_LEVELS[selected_level - 1])
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    if game_state == WIN and win_menu:
-                        choice = win_menu.handle_click(pygame.mouse.get_pos())
-                        if choice == 0:    # MAIN MENU
+                    mouse = pygame.mouse.get_pos()
+
+                    # Game Over screen clicks
+                    if game_state == PLAYING and game_over == -1 and not paused:
+                        go_choice = game_over_screen.handle_click(mouse)
+                        if go_choice == 0:   # RETRY
+                            game_over       = 0
+                            deaths_count   += 1
+                            game_start_time = pygame.time.get_ticks()
+                            full_reset_game(player, slime_group, world, WORLD_DATA_LEVELS[selected_level-1])  # ← full
+                        elif go_choice == 1:  # WORLD MAP  ← ADD THIS
+                            game_state = WORLD_MAP
+                            game_over  = 0
+                            paused     = False
+                            pygame.mouse.set_visible(True)
+                        elif go_choice == 2:  # MAIN MENU
+                            game_state = MENU
+                            game_over  = 0
+                            paused     = False
+                            pygame.mouse.set_visible(False)
+
+                    # Win menu clicks
+                    elif game_state == WIN and win_menu and not paused:
+                        choice = win_menu.handle_click(mouse)
+                        if choice == 0:    # NEXT LEVEL
+                            next_lvl = selected_level + 1
+                            if next_lvl <= len(WORLD_DATA_LEVELS):
+                                selected_level   = next_lvl
+                                highest_unlocked = max(highest_unlocked, selected_level)
+                                slime_group.empty()
+                                world = World(WORLD_DATA_LEVELS[selected_level - 1],selected_level, slime_group)
+                                reset_game(player, slime_group, world,WORLD_DATA_LEVELS[selected_level - 1])
+                                game_state      = PLAYING
+                                game_over       = 0
+                                win_menu        = None
+                                game_start_time = pygame.time.get_ticks()
+                                deaths_count    = 0
+                        elif choice == 1:  # WORLD MAP
+                            game_state = WORLD_MAP
+                            win_menu   = None
+                            game_over  = 0
+                            paused     = False
+                            pygame.mouse.set_visible(True)
+                        elif choice == 2:  # MAIN MENU
                             game_state  = MENU
                             win_menu    = None
                             game_over   = 0
                             paused      = False
                             needs_reset = True
                             pygame.mouse.set_visible(False)
-                        elif choice == 1:  # RESTART
-                            game_over  = 0
-                            game_state = PLAYING
-                            reset_game(player, slime_group, world)
-                        elif choice == 2:  # NEXT LEVEL
-                            print("Next level!")
 
-                    elif paused and game_state == PLAYING:
-                        choice = pause_menu.handle_click(pygame.mouse.get_pos())
-                        if choice == 0:    # CONTINUE
+                    # Pause menu clicks
+                    elif paused:
+                        choice = pause_menu.handle_click(mouse)
+                        if choice == 0:        # CONTINUE
                             paused = False
-                        elif choice == 1:  # MAIN MENU
+                        elif choice == 1:      # MAIN MENU
                             game_state = MENU
                             paused     = False
+                            win_menu   = None
                             pygame.mouse.set_visible(False)
-                        elif choice == 2:  # RESET
-                            game_over = 0
-                            paused    = False
-                            reset_game(player, slime_group, world)
+                        elif choice == 2:    # RESET
+                            game_over  = 0
+                            paused     = False
+                            game_state = PLAYING
+                            full_reset_game(player, slime_group, world, WORLD_DATA_LEVELS[selected_level-1])  # ← full
+                        elif choice == 4:      # WORLD MAP  ← ADD THIS
+                            game_state = WORLD_MAP
+                            paused     = False
+                            win_menu   = None
+                            pygame.mouse.set_visible(True)
 
         # -----------------------------------------------------------------
         # UPDATE
         # -----------------------------------------------------------------
+        if game_state == WORLD_MAP:
+            world_map_screen.update()
+            
+        if game_state == MENU:
+            menu_bg.update()
+            
+                # Check if player touched a slime → open quiz
+        if (game_state == PLAYING and game_over == 0
+                and not paused and player.quiz_trigger_slime is not None):
+            game_state = QUIZ
+            quiz_popup = QuizPopup(selected_language or "Python")
+            pygame.mouse.set_visible(True)
+
+        # Quiz update
+        if game_state == QUIZ and quiz_popup:
+            quiz_popup.update()
+            if quiz_popup.done:
+                if quiz_popup.result == "correct":
+                    # Kill the slime, close terminal, resume
+                    if player.quiz_trigger_slime is not None:
+                        if player.quiz_trigger_slime in slime_group:
+                            player.quiz_trigger_slime.kill()
+                    player.quiz_trigger_slime = None
+                    player.respawn_time       = pygame.time.get_ticks()
+                    quiz_popup                = None
+                    game_state                = PLAYING
+                    pygame.mouse.set_visible(True)
+                else:
+                    # Wrong — lose HP then immediately show a new question
+                    player.hp -= 1
+                    if player.hp <= 0:
+                        # No HP left — close terminal and trigger game over
+                        player.quiz_trigger_slime = None
+                        quiz_popup                = None
+                        game_state                = PLAYING
+                        game_over                 = -1
+                        pygame.mouse.set_visible(True)
+                    else:
+                        # Still alive — spawn a fresh terminal immediately
+                        quiz_popup = QuizPopup(selected_language or "Python")
+
         if game_state == PLAYING and game_over == 0 and not paused:
             game_over = player.update(world, game_over, slime_group)
 
@@ -1001,7 +2763,18 @@ def main() -> None:
                 if player.hitbox.colliderect(gate.hitbox):
                     gate.trigger()
                 if gate.is_open:
-                    game_state = WIN
+                    next_lvl = selected_level + 1
+                    if next_lvl <= len(WORLD_DATA_LEVELS):
+                        # More levels remain — show win screen
+                        highest_unlocked = max(highest_unlocked, next_lvl)
+                        game_state = WIN
+                        win_menu   = None   # fresh instance each time
+                    else:
+                        # All levels done — show win screen for final level
+                        highest_unlocked = max(highest_unlocked, selected_level)
+                        game_state = WIN
+                        win_menu   = None
+                    break  # stop checking gates once one is open
 
         # -----------------------------------------------------------------
         # DRAW
@@ -1009,7 +2782,13 @@ def main() -> None:
         screen.fill(BLACK)
 
         if game_state == MENU:
-            menu.draw(screen, pygame.mouse.get_pos())
+            menu.draw(screen, pygame.mouse.get_pos(), menu_bg)
+            
+        
+
+        elif game_state == WORLD_MAP:
+            world_map_screen.draw(screen, pygame.mouse.get_pos(), highest_unlocked)
+            pygame.mouse.set_visible(True)
 
         elif game_state == PLAYING:
             bg_manager.draw(screen)
@@ -1017,10 +2796,35 @@ def main() -> None:
             for enemy in slime_group:
                 enemy.draw(screen)
             player.draw(screen)
+            draw_hp_bar(screen, player, hud_font)
+            
+            if game_over == -1:
+                if game_start_time is not None:
+                    game_over_screen.elapsed_secs = (
+                        pygame.time.get_ticks() - game_start_time) // 1000
+                game_over_screen.deaths = deaths_count
+                game_over_screen.draw(screen, pygame.mouse.get_pos())
+                
+            if paused:
+                pause_menu.draw(screen, pygame.mouse.get_pos())
+                pygame.mouse.set_visible(True)
+                    
+        elif game_state == QUIZ:
+            bg_manager.draw(screen)
+            world.draw(screen)
+            for enemy in slime_group:
+                enemy.draw(screen)
+            player.draw(screen)
+            draw_hp_bar(screen, player, hud_font)
+            if quiz_popup:
+                quiz_popup.draw(screen, pygame.mouse.get_pos())
+            pygame.mouse.set_visible(True)
 
             if game_over == -1:
-                msg = game_over_font.render("GAME OVER — Press R to Restart", True, WHITE)
-                screen.blit(msg, (SCREEN_WIDTH // 2 - msg.get_width() // 2, SCREEN_HEIGHT // 2))
+                if game_start_time is not None:
+                    game_over_screen.elapsed_secs = (pygame.time.get_ticks() - game_start_time) // 1000
+                game_over_screen.deaths = deaths_count
+                game_over_screen.draw(screen, pygame.mouse.get_pos())
 
             if paused:
                 pause_menu.draw(screen, pygame.mouse.get_pos())
@@ -1037,12 +2841,14 @@ def main() -> None:
             overlay.fill((0, 0, 0, 140))
             screen.blit(overlay, (0, 0))
 
-            win_msg = win_font.render("YOU ESCAPED!", True, GOLD)
-            screen.blit(win_msg, (SCREEN_WIDTH // 2 - win_msg.get_width() // 2, 200))
-
             if win_menu is None:
                 win_menu = WinMenu()
-            win_menu.draw(screen, pygame.mouse.get_pos())
+
+            if not paused:
+                win_menu.draw(screen, pygame.mouse.get_pos())
+            else:
+                pause_menu.draw(screen, pygame.mouse.get_pos())
+
             pygame.mouse.set_visible(True)
 
         pygame.display.update()
