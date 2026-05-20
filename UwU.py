@@ -17,6 +17,7 @@ TITLE         = "THE-SYNTAX-ESCAPE"
 TILE_SIZE = 40
 
 # --- Game States ---
+START_PAGE = 6
 MENU      = 0
 PLAYING   = 1
 QUIZ      = 2
@@ -1501,6 +1502,198 @@ class MenuBackground:
 
 
 # =============================================================================
+# START PAGE  — story reveal + START button
+# =============================================================================
+
+class StartPage:
+    """Intro screen: typewriter story → blinking START button."""
+
+    STORY_LINES = [
+        "YEAR  2087.   THE  WORLD  RUNS  ON  CODE.",
+        "",
+        "YOU ARE K-41 — A ROGUE AI BORN FROM A CORRUPTED",
+        "COMPILER, TRAPPED DEEP INSIDE THE SYNTAX GRID.",
+        "",
+        "THE GRID IS A LIVING LABYRINTH CRAWLING WITH",
+        "HOSTILE SLIMES THAT GUARD EVERY EXIT GATE.",
+        "",
+        "EACH GATE IS SEALED BY AN ANCIENT FIREWALL.",
+        "TO BREAK THROUGH: ANSWER THE TERMINAL QUESTIONS",
+        "AND DESTROY EVERY SLIME THAT BLOCKS YOUR PATH.",
+        "",
+        "TEN LEVELS STAND BETWEEN YOU AND FREEDOM.",
+        "ONE WRONG ANSWER COSTS HP.",
+        "ONE LIVING SLIME KEEPS THE GATE LOCKED.",
+        "",
+        "THE ONLY WAY OUT . . . IS THROUGH THE CODE.",
+    ]
+
+    CHARS_PER_TICK = 2          # characters revealed per frame
+    LINE_HEIGHT    = 28
+    STORY_TOP      = 280        # y where story text begins
+    BTN_W          = 260
+    BTN_H          = 54
+    FLASH_MS       = 150
+
+    def __init__(self):
+        self._story_font  = pygame.font.SysFont("courier", 19, bold=True)
+        self._title_font  = PixelFont(36)
+        self._btn_font    = PixelFont(26)
+
+        # Build the full story string (lines joined by newline markers)
+        self._lines       = self.STORY_LINES
+        # Typewriter state
+        self._total_chars = sum(len(l) for l in self._lines)
+        self._revealed    = 0          # number of chars revealed so far
+        self._story_done  = False
+        # Button blink / flash state
+        self._blink_timer = 0
+        self._blink_show  = True
+        self._click_time  = 0
+        self._clicked     = False      # True once START is pressed
+        self.go_to_menu   = False      # main loop reads this
+
+    # ------------------------------------------------------------------ #
+    def _btn_rect(self) -> pygame.Rect:
+        return pygame.Rect(
+            SCREEN_WIDTH  // 2 - self.BTN_W // 2,
+            SCREEN_HEIGHT - 160,
+            self.BTN_W,
+            self.BTN_H,
+        )
+
+    # ------------------------------------------------------------------ #
+    def handle_event(self, event) -> None:
+        if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_RETURN):
+            if not self._story_done:
+                # Skip typewriter — show everything at once
+                self._revealed   = self._total_chars
+                self._story_done = True
+            else:
+                self.go_to_menu = True
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._story_done and self._btn_rect().collidepoint(event.pos):
+                self._click_time = pygame.time.get_ticks()
+                self._clicked    = True
+
+    # ------------------------------------------------------------------ #
+    def update(self) -> None:
+        # Advance typewriter
+        if not self._story_done:
+            self._revealed += self.CHARS_PER_TICK
+            if self._revealed >= self._total_chars:
+                self._revealed   = self._total_chars
+                self._story_done = True
+
+        # Blink the START button
+        if self._story_done:
+            self._blink_timer += 1
+            if self._blink_timer >= 30:
+                self._blink_show  = not self._blink_show
+                self._blink_timer = 0
+
+        # Short flash delay before transitioning
+        if self._clicked and pygame.time.get_ticks() - self._click_time > self.FLASH_MS:
+            self.go_to_menu = True
+
+    # ------------------------------------------------------------------ #
+    def draw(self, screen: pygame.Surface, mouse_pos: tuple, bg: "MenuBackground") -> None:
+        bg.draw(screen)
+
+        now = pygame.time.get_ticks()
+
+        # ── Title ──────────────────────────────────────────────────────
+        title = "THE  SYNTAX  ESCAPE"
+        tw    = self._title_font.text_width(title)
+        self._title_font.render(title, screen,
+                                SCREEN_WIDTH // 2 - tw // 2, 140,
+                                color=(0, 255, 100))
+
+        # Glowing underline below title
+        ux = SCREEN_WIDTH // 2 - 200
+        pulse = abs(((now // 10) % 120) - 60) / 60
+        glow_alpha = int(80 + pulse * 120)
+        glow_surf = pygame.Surface((400, 3), pygame.SRCALPHA)
+        glow_surf.fill((0, 255, 100, glow_alpha))
+        screen.blit(glow_surf, (ux, 190))
+
+        # ── Sub-header ─────────────────────────────────────────────────
+        sub_font = pygame.font.SysFont("courier", 14, bold=True)
+        sub_surf = sub_font.render("// INCOMING TRANSMISSION //", True, (0, 160, 60))
+        screen.blit(sub_surf, (SCREEN_WIDTH // 2 - sub_surf.get_width() // 2, 215))
+
+        # ── Story typewriter ───────────────────────────────────────────
+        chars_left = self._revealed
+        for li, line in enumerate(self._lines):
+            if chars_left <= 0:
+                break
+            visible    = line[:chars_left]
+            chars_left = max(0, chars_left - len(line))
+
+            if not visible:
+                continue  # blank line still advances spacing
+
+            color = (0, 255, 100) if li == 0 else (170, 255, 170)
+            surf  = self._story_font.render(visible, True, color)
+            x     = SCREEN_WIDTH // 2 - surf.get_width() // 2
+            y     = self.STORY_TOP + li * self.LINE_HEIGHT
+            screen.blit(surf, (x, y))
+
+        # Blinking cursor at end of last revealed line
+        if not self._story_done:
+            # find which line the cursor is on
+            c = self._revealed
+            for li, line in enumerate(self._lines):
+                if c <= len(line):
+                    partial = line[:c]
+                    surf    = self._story_font.render(partial + "_", True, (0, 255, 100))
+                    x       = SCREEN_WIDTH // 2 - surf.get_width() // 2
+                    y       = self.STORY_TOP + li * self.LINE_HEIGHT
+                    screen.blit(surf, (x, y))
+                    break
+                c -= len(line)
+
+        # ── START button ───────────────────────────────────────────────
+        if self._story_done:
+            rect       = self._btn_rect()
+            is_hovered = rect.collidepoint(mouse_pos)
+            is_flash   = self._clicked and now - self._click_time < self.FLASH_MS
+
+            if is_flash or (self._blink_show):
+                # Draw button background
+                bg_col = (0, 60, 20) if is_flash else ((0, 45, 15) if is_hovered else (5, 20, 8))
+                pygame.draw.rect(screen, bg_col, rect, border_radius=6)
+
+                # Border glow
+                border_col = (255, 215, 0) if is_flash else ((0, 255, 100) if is_hovered else (0, 180, 60))
+                pygame.draw.rect(screen, border_col, rect, 3, border_radius=6)
+
+                # Corner brackets
+                blen = 10
+                for sx, sy, dx, dy in [(-1,-1,1,0),(-1,-1,0,1),(1,-1,-1,0),(1,-1,0,1),
+                                        (-1,1,1,0),(-1,1,0,-1),(1,1,-1,0),(1,1,0,-1)]:
+                    ox = rect.centerx + sx * (rect.w // 2)
+                    oy = rect.centery + sy * (rect.h // 2)
+                    pygame.draw.line(screen, border_col, (ox, oy),
+                                     (ox + dx * blen, oy + dy * blen), 2)
+
+                # Label
+                label = "[ START ]"
+                lw    = self._btn_font.text_width(label)
+                self._btn_font.render(label, screen,
+                                      rect.centerx - lw // 2,
+                                      rect.centery - 13,
+                                      color=border_col)
+
+            # Hint text below button
+            hint_font = pygame.font.SysFont("courier", 13, bold=True)
+            hint_surf = hint_font.render("PRESS  SPACE / ENTER  OR  CLICK  TO  BEGIN", True, (0, 120, 50))
+            screen.blit(hint_surf, (SCREEN_WIDTH // 2 - hint_surf.get_width() // 2,
+                                    rect.bottom + 14))
+
+
+# =============================================================================
 # MENU  — language selection screen
 # =============================================================================
 
@@ -2219,8 +2412,10 @@ class QuizPopup:
 
     def __init__(self, language: str):
         self.language  = language
-        self.questions = QUIZ_QUESTIONS.get(language, []).copy()
-        random.shuffle(self.questions)
+        raw_questions  = QUIZ_QUESTIONS.get(language, []).copy()
+        random.shuffle(raw_questions)
+        # Shuffle the answer positions so the correct answer isn't always [A]
+        self.questions = [self._shuffle_options(q) for q in raw_questions]
         self._q_index = 0
         self._current = self.questions[0] if self.questions else None
 
@@ -2237,6 +2432,14 @@ class QuizPopup:
 
         self.result = None    # set to "correct" or "wrong" once feedback expires
         self.done   = False
+
+    @staticmethod
+    def _shuffle_options(q: dict) -> dict:
+        """Return a copy of the question with options in a random order."""
+        correct_text = q["options"][q["answer"]]
+        opts         = q["options"].copy()
+        random.shuffle(opts)
+        return {"q": q["q"], "options": opts, "answer": opts.index(correct_text)}
 
     def _panel_rect(self):
         return pygame.Rect(
@@ -2482,6 +2685,96 @@ def draw_hp_bar(screen: pygame.Surface, player: "Player", font: PixelFont):
 
 
 # =============================================================================
+# SLIME COUNTER HUD  — top-right corner
+# =============================================================================
+
+def draw_slime_hud(screen: pygame.Surface, slime_group, total_slimes: int, font: PixelFont):
+    """Neon panel showing how many slimes remain out of the level total."""
+    remaining  = len(slime_group)
+    all_clear  = remaining == 0
+    now        = pygame.time.get_ticks()
+
+    label      = "SLIMES"
+    count_str  = f"{remaining}/{total_slimes}"
+
+    # Pulse effect once all slimes are cleared
+    pulse      = abs(((now // 8) % 120) - 60) / 60  if all_clear else 0.0
+    accent_col = (0, 255, 100) if all_clear else (255, 80, 80) if remaining <= 1 else (255, 180, 0)
+
+    lbl_font   = pygame.font.SysFont("courier", 13, bold=True)
+    cnt_font   = pygame.font.SysFont("courier", 20, bold=True)
+
+    lbl_surf   = lbl_font.render(label,     True, (180, 180, 180))
+    cnt_surf   = cnt_font.render(count_str, True, accent_col)
+
+    pad_x      = 14
+    pad_y      = 6
+    panel_w    = max(lbl_surf.get_width(), cnt_surf.get_width()) + pad_x * 2 + 34
+    panel_h    = lbl_surf.get_height() + cnt_surf.get_height() + pad_y * 2 + 8
+
+    px = SCREEN_WIDTH  - panel_w - 16
+    py = 16
+
+    # Background panel
+    panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+    panel.fill((0, 0, 0, 140))
+    glow_alpha = int(80 + pulse * 100) if all_clear else 80
+    pygame.draw.rect(panel, (*accent_col, glow_alpha), (0, 0, panel_w, panel_h), 1)
+    screen.blit(panel, (px, py))
+
+    # Pixel-art skull icon (7×8) – turns to checkmark when all clear
+    icon_px = 3
+    if all_clear:
+        check_map = [
+            "0000001",
+            "0000010",
+            "1000100",
+            "0101000",
+            "0010000",
+            "0000000",
+            "0000000",
+            "0000000",
+        ]
+        icon_color = (0, 255, 100)
+    else:
+        check_map = [
+            "0111110",
+            "1000001",
+            "1010101",
+            "1000001",
+            "0111110",
+            "0011100",
+            "0011100",
+            "0001000",
+        ]
+        icon_color = accent_col
+
+    icon_surf = pygame.Surface((7 * icon_px, 8 * icon_px), pygame.SRCALPHA)
+    for ri, row in enumerate(check_map):
+        for ci, ch in enumerate(row):
+            if ch == "1":
+                pygame.draw.rect(icon_surf, icon_color,
+                                 (ci * icon_px, ri * icon_px, icon_px, icon_px))
+    ix = px + pad_x
+    iy = py + pad_y + 2
+    screen.blit(icon_surf, (ix, iy))
+
+    # Label and count text
+    tx = px + pad_x + 7 * icon_px + 6
+    screen.blit(lbl_surf, (tx, py + pad_y + 2))
+    screen.blit(cnt_surf, (tx, py + pad_y + lbl_surf.get_height() + 4))
+
+    # "ALL CLEAR!" banner when all slimes gone
+    if all_clear:
+        ac_font  = pygame.font.SysFont("courier", 13, bold=True)
+        ac_alpha = int(140 + pulse * 115)
+        ac_surf  = ac_font.render("ALL CLEAR!", True, (0, 255, 100))
+        ac_surf.set_alpha(ac_alpha)
+        screen.blit(ac_surf, (px + panel_w // 2 - ac_surf.get_width() // 2,
+                               py + panel_h + 4))
+
+
+# =============================================================================
 # MAIN LOOP
 # =============================================================================
 
@@ -2509,8 +2802,35 @@ def main() -> None:
 
     start_music()
 
-    # --- Screen & core objects ---
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    # --- Screen setup (responsive — scales to any display size) ---
+    pygame.display.init()
+    _info  = pygame.display.Info()
+    _mon_w = max(320, _info.current_w)
+    _mon_h = max(320, _info.current_h)
+    # Fit the 1000×1000 game into 92 % of the monitor, keep 1:1 ratio
+    _init_scale = min((_mon_w * 0.92) / SCREEN_WIDTH,
+                      (_mon_h * 0.92) / SCREEN_HEIGHT)
+    _win_w = int(SCREEN_WIDTH  * _init_scale)
+    _win_h = int(SCREEN_HEIGHT * _init_scale)
+
+    display = pygame.display.set_mode((_win_w, _win_h), pygame.RESIZABLE)
+    screen  = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))   # internal render target
+
+    # Mutable view state: [scale, offset_x, offset_y]
+    # offset is the black-bar size when the window aspect differs from 1:1
+    _view = [_init_scale, 0, 0]
+
+    def get_mouse():
+        """Convert real window mouse pos → internal 1000×1000 game coordinates."""
+        mx, my = pygame.mouse.get_pos()
+        s, ox, oy = _view[0], _view[1], _view[2]
+        if s <= 0:
+            return (0, 0)
+        gx = int((mx - ox) / s)
+        gy = int((my - oy) / s)
+        return (max(0, min(SCREEN_WIDTH  - 1, gx)),
+                max(0, min(SCREEN_HEIGHT - 1, gy)))
+
     pygame.display.set_caption(TITLE)
     pygame.mouse.set_visible(False)
     clock = pygame.time.Clock()
@@ -2525,7 +2845,8 @@ def main() -> None:
 
     # --- Game state ---
     game_over         = 0              # 0 = alive, -1 = dead
-    game_state        = MENU
+    game_state        = START_PAGE
+    start_page        = StartPage()
     selected_language = None
     selected_level    = 1
     win_menu          = None
@@ -2539,9 +2860,11 @@ def main() -> None:
     game_over_screen  = GameOverScreen()
 
     # Stats tracked for the game-over and win screens
-    game_start_time : int | None = None
-    deaths_count    : int        = 0
-    hp_needs_reset  : bool       = False   # flag to do a full HP reset on next spawn
+    game_start_time       : int | None = None
+    deaths_count          : int        = 0
+    hp_needs_reset        : bool       = False   # flag to do a full HP reset on next spawn
+    gate_blocked_msg_time : int        = 0       # when the "kill all slimes" warning was shown
+    total_slimes          : int        = 0       # total slimes at level start
 
     running = True
     while running:
@@ -2554,9 +2877,21 @@ def main() -> None:
             if event.type == pygame.QUIT:
                 running = False
 
+            # ── WINDOW RESIZE — recalculate scale & letterbox offsets ──
+            if event.type == pygame.VIDEORESIZE:
+                display = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+                s        = min(event.w / SCREEN_WIDTH, event.h / SCREEN_HEIGHT)
+                _view[0] = s
+                _view[1] = (event.w  - int(SCREEN_WIDTH  * s)) // 2
+                _view[2] = (event.h  - int(SCREEN_HEIGHT * s)) // 2
+
+            # ── START PAGE ────────────────────────────────────────────
+            if game_state == START_PAGE:
+                start_page.handle_event(event)
+
             # ── MAIN MENU ─────────────────────────────────────────────
             if game_state == MENU and event.type == pygame.MOUSEBUTTONDOWN:
-                chosen = menu.handle_click(pygame.mouse.get_pos())
+                chosen = menu.handle_click(get_mouse())
                 if chosen:
                     selected_language = chosen
                     slime_group.empty()
@@ -2568,12 +2903,13 @@ def main() -> None:
                         hp_needs_reset = False
                     else:
                         reset_game(player, slime_group, world, WORLD_DATA_LEVELS[selected_level - 1])
+                    total_slimes    = len(slime_group)
                     game_start_time = pygame.time.get_ticks()
                     deaths_count    = 0
 
             # ── WORLD MAP ─────────────────────────────────────────────
             elif game_state == WORLD_MAP and event.type == pygame.MOUSEBUTTONDOWN:
-                wm_choice = world_map_screen.handle_click(pygame.mouse.get_pos(), highest_unlocked)
+                wm_choice = world_map_screen.handle_click(get_mouse(), highest_unlocked)
                 if wm_choice == 0:           # back → main menu
                     game_state = MENU
                     pygame.mouse.set_visible(False)
@@ -2586,6 +2922,7 @@ def main() -> None:
                         hp_needs_reset = False
                     else:
                         reset_game(player, slime_group, world, WORLD_DATA_LEVELS[selected_level - 1])
+                    total_slimes    = len(slime_group)
                     game_state      = PLAYING
                     game_over       = 0
                     game_start_time = pygame.time.get_ticks()
@@ -2596,7 +2933,7 @@ def main() -> None:
             elif game_state == QUIZ and event.type == pygame.MOUSEBUTTONDOWN:
                 if game_over == -1:
                     # Game-over screen is shown on top of the quiz state
-                    go_choice = game_over_screen.handle_click(pygame.mouse.get_pos())
+                    go_choice = game_over_screen.handle_click(get_mouse())
                     if go_choice == 0:       # RETRY
                         game_over       = 0
                         deaths_count   += 1
@@ -2604,7 +2941,8 @@ def main() -> None:
                         quiz_popup      = None
                         game_state      = PLAYING
                         full_reset_game(player, slime_group, world, WORLD_DATA_LEVELS[selected_level - 1])
-                        hp_needs_reset = False
+                        total_slimes    = len(slime_group)
+                        hp_needs_reset  = False
                     elif go_choice == 1:     # WORLD MAP
                         game_state = WORLD_MAP
                         game_over  = 0
@@ -2616,7 +2954,7 @@ def main() -> None:
                         quiz_popup = None
                         pygame.mouse.set_visible(False)
                 elif quiz_popup:
-                    quiz_popup.handle_click(pygame.mouse.get_pos())
+                    quiz_popup.handle_click(get_mouse())
 
             # ── PLAYING / WIN / PAUSED ────────────────────────────────
             elif game_state in (PLAYING, WIN) or paused:
@@ -2625,7 +2963,7 @@ def main() -> None:
                         paused = not paused
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    mouse = pygame.mouse.get_pos()
+                    mouse = get_mouse()
 
                     # Game Over overlay
                     if game_state == PLAYING and game_over == -1 and not paused:
@@ -2635,7 +2973,8 @@ def main() -> None:
                             deaths_count   += 1
                             game_start_time = pygame.time.get_ticks()
                             full_reset_game(player, slime_group, world, WORLD_DATA_LEVELS[selected_level - 1])
-                            hp_needs_reset = False
+                            total_slimes    = len(slime_group)
+                            hp_needs_reset  = False
                         elif go_choice == 1:  # WORLD MAP
                             game_state = WORLD_MAP
                             game_over  = 0
@@ -2658,6 +2997,7 @@ def main() -> None:
                                 slime_group.empty()
                                 world = World(WORLD_DATA_LEVELS[selected_level - 1], selected_level, slime_group)
                                 reset_game(player, slime_group, world, WORLD_DATA_LEVELS[selected_level - 1])
+                                total_slimes    = len(slime_group)
                                 game_state      = PLAYING
                                 game_over       = 0
                                 win_menu        = None
@@ -2691,6 +3031,7 @@ def main() -> None:
                             paused     = False
                             game_state = PLAYING
                             full_reset_game(player, slime_group, world, WORLD_DATA_LEVELS[selected_level - 1])
+                            total_slimes   = len(slime_group)
                             hp_needs_reset = False
                         elif choice == 4:  # WORLD MAP
                             game_state = WORLD_MAP
@@ -2701,6 +3042,13 @@ def main() -> None:
         # =================================================================
         # UPDATE
         # =================================================================
+
+        if game_state == START_PAGE:
+            menu_bg.update()
+            start_page.update()
+            if start_page.go_to_menu:
+                game_state = MENU
+                pygame.mouse.set_visible(False)
 
         if game_state == WORLD_MAP:
             world_map_screen.update()
@@ -2757,7 +3105,11 @@ def main() -> None:
             world.gate_group.update()
             for gate in world.gate_group:
                 if player.hitbox.colliderect(gate.hitbox):
-                    gate.trigger()
+                    if len(slime_group) == 0:
+                        gate.trigger()
+                    else:
+                        # Slimes still alive — block the gate and show warning
+                        gate_blocked_msg_time = pygame.time.get_ticks()
                 if gate.is_open:
                     particles.emit_gate(gate.rect.x, gate.rect.y)
                     next_lvl = selected_level + 1
@@ -2770,15 +3122,19 @@ def main() -> None:
                     break
 
         # =================================================================
-        # DRAW
+        # DRAW  (all drawing goes to internal `screen`, then scaled to `display`)
         # =================================================================
         screen.fill(BLACK)
 
-        if game_state == MENU:
-            menu.draw(screen, pygame.mouse.get_pos(), menu_bg)
+        if game_state == START_PAGE:
+            start_page.draw(screen, get_mouse(), menu_bg)
+            pygame.mouse.set_visible(True)
+
+        elif game_state == MENU:
+            menu.draw(screen, get_mouse(), menu_bg)
 
         elif game_state == WORLD_MAP:
-            world_map_screen.draw(screen, pygame.mouse.get_pos(), highest_unlocked)
+            world_map_screen.draw(screen, get_mouse(), highest_unlocked)
             pygame.mouse.set_visible(True)
 
         elif game_state == PLAYING:
@@ -2788,38 +3144,52 @@ def main() -> None:
                 enemy.draw(screen)
             player.draw(screen)
             draw_hp_bar(screen, player, hud_font)
+            draw_slime_hud(screen, slime_group, total_slimes, hud_font)
 
             if game_over == -1:
-                # Show game over panel on top
                 if game_start_time is not None:
                     game_over_screen.elapsed_secs = (pygame.time.get_ticks() - game_start_time) // 1000
                 game_over_screen.deaths = deaths_count
-                game_over_screen.draw(screen, pygame.mouse.get_pos())
+                game_over_screen.draw(screen, get_mouse())
+
+            # Gate-blocked warning
+            if pygame.time.get_ticks() - gate_blocked_msg_time < 2000 and gate_blocked_msg_time > 0:
+                warn_font   = pygame.font.SysFont("courier", 22, bold=True)
+                slimes_left = len(slime_group)
+                warn_text   = f"  DEFEAT ALL SLIMES FIRST!  ({slimes_left} remaining)"
+                warn_surf   = warn_font.render(warn_text, True, (255, 60, 60))
+                warn_bg     = pygame.Surface((warn_surf.get_width() + 24, warn_surf.get_height() + 14), pygame.SRCALPHA)
+                warn_bg.fill((0, 0, 0, 180))
+                wx = SCREEN_WIDTH  // 2 - warn_bg.get_width()  // 2
+                wy = SCREEN_HEIGHT // 2 - 80
+                screen.blit(warn_bg,  (wx, wy))
+                pygame.draw.rect(screen, (255, 60, 60), (wx, wy, warn_bg.get_width(), warn_bg.get_height()), 2)
+                screen.blit(warn_surf, (wx + 12, wy + 7))
 
             if paused:
-                pause_menu.draw(screen, pygame.mouse.get_pos())
+                pause_menu.draw(screen, get_mouse())
                 pygame.mouse.set_visible(True)
 
         elif game_state == QUIZ:
-            # Draw the game world in the background, then the quiz overlay
             bg_manager.draw(screen)
             world.draw(screen)
             for enemy in slime_group:
                 enemy.draw(screen)
             player.draw(screen)
             draw_hp_bar(screen, player, hud_font)
+            draw_slime_hud(screen, slime_group, total_slimes, hud_font)
             if quiz_popup:
-                quiz_popup.draw(screen, pygame.mouse.get_pos())
+                quiz_popup.draw(screen, get_mouse())
             pygame.mouse.set_visible(True)
 
             if game_over == -1:
                 if game_start_time is not None:
                     game_over_screen.elapsed_secs = (pygame.time.get_ticks() - game_start_time) // 1000
                 game_over_screen.deaths = deaths_count
-                game_over_screen.draw(screen, pygame.mouse.get_pos())
+                game_over_screen.draw(screen, get_mouse())
 
             if paused:
-                pause_menu.draw(screen, pygame.mouse.get_pos())
+                pause_menu.draw(screen, get_mouse())
                 pygame.mouse.set_visible(True)
 
         elif game_state == WIN:
@@ -2830,7 +3200,6 @@ def main() -> None:
             player.draw(screen)
             particles.draw(screen)
 
-            # Semi-transparent overlay so the win menu pops
             overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 140))
             screen.blit(overlay, (0, 0))
@@ -2839,13 +3208,22 @@ def main() -> None:
                 win_menu = WinMenu()
 
             if not paused:
-                win_menu.draw(screen, pygame.mouse.get_pos())
+                win_menu.draw(screen, get_mouse())
             else:
-                pause_menu.draw(screen, pygame.mouse.get_pos())
+                pause_menu.draw(screen, get_mouse())
 
             pygame.mouse.set_visible(True)
 
-        pygame.display.update()
+        # ── Scale internal surface → actual display window ─────────────
+        _s  = _view[0]
+        _ox = _view[1]
+        _oy = _view[2]
+        _sw = int(SCREEN_WIDTH  * _s)
+        _sh = int(SCREEN_HEIGHT * _s)
+        _scaled = pygame.transform.scale(screen, (_sw, _sh))
+        display.fill(BLACK)
+        display.blit(_scaled, (_ox, _oy))
+        pygame.display.flip()
 
     pygame.quit()
 
